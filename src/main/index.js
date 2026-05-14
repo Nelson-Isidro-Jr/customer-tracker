@@ -83,6 +83,7 @@ handle('settings:set', (_, data) => { writeSettings(data); return true })
 
 // ─── IPC: Customers ───────────────────────────────────────────────────────────
 handle('customers:getAll',    ()               => db.getAllCustomers())
+handle('customers:getAllLite',()               => db.getAllCustomersLite())
 handle('customers:getById',   (_, id)          => db.getCustomerById(id))
 handle('customers:add',       (_, data)        => db.addCustomer(data))
 handle('customers:update',    (_, { id, data }) => db.updateCustomer(id, data))

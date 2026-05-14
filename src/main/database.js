@@ -35,6 +35,9 @@ function initSchema(db) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
     );
+
+    CREATE INDEX IF NOT EXISTS idx_transactions_customer_id ON transactions(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_transactions_date        ON transactions(date);
   `)
 }
 
@@ -51,6 +54,10 @@ export function getAllCustomers() {
     GROUP BY c.id
     ORDER BY total_purchases DESC
   `).all()
+}
+
+export function getAllCustomersLite() {
+  return getDB().prepare(`SELECT id, full_name FROM customers ORDER BY full_name`).all()
 }
 
 export function getCustomerById(id) {

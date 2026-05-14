@@ -15,7 +15,7 @@ function AddTxnModal({ onClose, onSuccess }) {
   const set = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }))
 
   useEffect(() => {
-    window.electron.invoke('customers:getAll').then(setCustomers)
+    window.electron.invoke('customers:getAllLite').then(setCustomers)
   }, [])
 
   async function submit(e) {
