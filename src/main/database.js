@@ -38,7 +38,32 @@ function initSchema(db) {
 
     CREATE INDEX IF NOT EXISTS idx_transactions_customer_id ON transactions(customer_id);
     CREATE INDEX IF NOT EXISTS idx_transactions_date        ON transactions(date);
+
+    CREATE TABLE IF NOT EXISTS activity_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id INTEGER,
+      customer_name TEXT,
+      summary TEXT,
+      amount REAL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_activity_log_created_at ON activity_log(created_at);
+    CREATE INDEX IF NOT EXISTS idx_activity_log_action     ON activity_log(action);
   `)
+}
+
+function logActivity({ action, entity_type, entity_id = null, customer_name = null, summary = null, amount = null }) {
+  try {
+    getDB().prepare(`
+      INSERT INTO activity_log (action, entity_type, entity_id, customer_name, summary, amount)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(action, entity_type, entity_id, customer_name, summary, amount)
+  } catch (err) {
+    console.error('[activity_log] insert failed:', err)
+  }
 }
 
 // ─── Customers ────────────────────────────────────────────────────────────────
@@ -77,6 +102,13 @@ export function addCustomer(data) {
   const result = getDB().prepare(`
     INSERT INTO customers (full_name, email, phone, notes) VALUES (?, ?, ?, ?)
   `).run(data.full_name, data.email || null, data.phone || null, data.notes || null)
+  logActivity({
+    action: 'customer_added',
+    entity_type: 'customer',
+    entity_id: result.lastInsertRowid,
+    customer_name: data.full_name,
+    summary: `Added customer ${data.full_name}`
+  })
   return getCustomerById(result.lastInsertRowid)
 }
 
@@ -84,11 +116,28 @@ export function updateCustomer(id, data) {
   getDB().prepare(`
     UPDATE customers SET full_name = ?, email = ?, phone = ?, notes = ? WHERE id = ?
   `).run(data.full_name, data.email || null, data.phone || null, data.notes || null, id)
+  logActivity({
+    action: 'customer_edited',
+    entity_type: 'customer',
+    entity_id: id,
+    customer_name: data.full_name,
+    summary: `Edited customer ${data.full_name}`
+  })
   return getCustomerById(id)
 }
 
 export function deleteCustomer(id) {
+  const existing = getDB().prepare('SELECT full_name FROM customers WHERE id = ?').get(id)
   getDB().prepare('DELETE FROM customers WHERE id = ?').run(id)
+  if (existing) {
+    logActivity({
+      action: 'customer_deleted',
+      entity_type: 'customer',
+      entity_id: id,
+      customer_name: existing.full_name,
+      summary: `Deleted customer ${existing.full_name}`
+    })
+  }
 }
 
 export function searchCustomers(query) {
@@ -137,6 +186,15 @@ export function addTransaction(data) {
   const result = getDB().prepare(`
     INSERT INTO transactions (customer_id, amount, description, date) VALUES (?, ?, ?, ?)
   `).run(data.customer_id, data.amount, data.description || null, data.date)
+  const cust = getDB().prepare('SELECT full_name FROM customers WHERE id = ?').get(data.customer_id)
+  logActivity({
+    action: 'transaction_added',
+    entity_type: 'transaction',
+    entity_id: result.lastInsertRowid,
+    customer_name: cust?.full_name || null,
+    summary: data.description || null,
+    amount: data.amount
+  })
   return { id: result.lastInsertRowid, ...data }
 }
 
@@ -144,16 +202,43 @@ export function updateTransaction(id, data) {
   getDB().prepare(`
     UPDATE transactions SET amount = ?, description = ?, date = ? WHERE id = ?
   `).run(data.amount, data.description || null, data.date, id)
-  return getDB().prepare(`
+  const row = getDB().prepare(`
     SELECT t.*, c.full_name AS customer_name
     FROM transactions t
     JOIN customers c ON t.customer_id = c.id
     WHERE t.id = ?
   `).get(id)
+  if (row) {
+    logActivity({
+      action: 'transaction_edited',
+      entity_type: 'transaction',
+      entity_id: id,
+      customer_name: row.customer_name,
+      summary: data.description || null,
+      amount: data.amount
+    })
+  }
+  return row
 }
 
 export function deleteTransaction(id) {
+  const existing = getDB().prepare(`
+    SELECT t.amount, t.description, c.full_name AS customer_name
+    FROM transactions t
+    LEFT JOIN customers c ON t.customer_id = c.id
+    WHERE t.id = ?
+  `).get(id)
   getDB().prepare('DELETE FROM transactions WHERE id = ?').run(id)
+  if (existing) {
+    logActivity({
+      action: 'transaction_deleted',
+      entity_type: 'transaction',
+      entity_id: id,
+      customer_name: existing.customer_name,
+      summary: existing.description || null,
+      amount: existing.amount
+    })
+  }
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
@@ -260,6 +345,30 @@ export function getMonthlyReport(year, month) {
   return { year, month: ym, transactions, total, count: transactions.length, bestBuyer, dailyBreakdown }
 }
 
+// ─── Activity Log ─────────────────────────────────────────────────────────────
+
+export function getActivityPage({ page = 1, pageSize = 50, action = null } = {}) {
+  const offset = Math.max(0, (page - 1) * pageSize)
+  const params = []
+  let where = ''
+  if (action && action !== 'all') {
+    where = 'WHERE action = ?'
+    params.push(action)
+  }
+  const rows = getDB().prepare(`
+    SELECT * FROM activity_log
+    ${where}
+    ORDER BY id DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, pageSize, offset)
+  const total = getDB().prepare(`SELECT COUNT(*) AS c FROM activity_log ${where}`).get(...params).c
+  return { rows, total, page, pageSize }
+}
+
+export function clearActivityLog() {
+  getDB().prepare('DELETE FROM activity_log').run()
+}
+
 // ─── Import / Export ──────────────────────────────────────────────────────────
 
 export function exportAllData() {
@@ -276,9 +385,11 @@ export function importData(data) {
   const run = d.transaction(() => {
     d.prepare('DELETE FROM transactions').run()
     d.prepare('DELETE FROM customers').run()
+    d.prepare('DELETE FROM activity_log').run()
     try {
       d.prepare("DELETE FROM sqlite_sequence WHERE name='transactions'").run()
       d.prepare("DELETE FROM sqlite_sequence WHERE name='customers'").run()
+      d.prepare("DELETE FROM sqlite_sequence WHERE name='activity_log'").run()
     } catch (_) {}
     const ic = d.prepare('INSERT INTO customers (id,full_name,email,phone,notes,created_at) VALUES (?,?,?,?,?,?)')
     for (const c of data.customers) {
@@ -297,9 +408,11 @@ export function clearAllData() {
   const run = d.transaction(() => {
     d.prepare('DELETE FROM transactions').run()
     d.prepare('DELETE FROM customers').run()
+    d.prepare('DELETE FROM activity_log').run()
     try {
       d.prepare("DELETE FROM sqlite_sequence WHERE name='transactions'").run()
       d.prepare("DELETE FROM sqlite_sequence WHERE name='customers'").run()
+      d.prepare("DELETE FROM sqlite_sequence WHERE name='activity_log'").run()
     } catch (_) {}
   })
   run()

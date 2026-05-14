@@ -129,6 +129,10 @@ handle('transactions:add',           (_, data)    => db.addTransaction(data))
 handle('transactions:update',        (_, { id, data }) => db.updateTransaction(id, data))
 handle('transactions:delete',        (_, id)      => db.deleteTransaction(id))
 
+// ─── IPC: Activity Log ────────────────────────────────────────────────────────
+handle('activity:getPage', (_, opts) => db.getActivityPage(opts || {}))
+handle('activity:clear',   ()         => { db.clearActivityLog(); return true })
+
 // ─── IPC: Analytics ───────────────────────────────────────────────────────────
 handle('analytics:dashboard',        ()                          => db.getDashboardStats())
 handle('analytics:bestBuyerMonthly', (_, { year, month })       => db.getBestBuyerMonthly(year, month))
