@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, Plus, UserCheck, Crown, ChevronRight, Edit, Trash2, Mail, Phone } from 'lucide-react'
@@ -53,17 +53,26 @@ export default function Customers() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [saving, setSaving]       = useState(false)
 
+  const reqIdRef = useRef(0)
+
   const load = useCallback(async () => {
+    const myReqId = ++reqIdRef.current
     setLoading(true)
     try {
       const data = query.trim()
         ? await window.electron.invoke('customers:search', query.trim())
         : await window.electron.invoke('customers:getAll')
+      if (myReqId !== reqIdRef.current) return
       setCustomers(data)
-    } finally { setLoading(false) }
+    } finally {
+      if (myReqId === reqIdRef.current) setLoading(false)
+    }
   }, [query])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const t = setTimeout(load, 250)
+    return () => clearTimeout(t)
+  }, [load])
 
   async function handleAdd(form) {
     setSaving(true)
