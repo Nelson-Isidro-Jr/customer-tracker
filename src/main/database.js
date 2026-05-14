@@ -140,6 +140,18 @@ export function addTransaction(data) {
   return { id: result.lastInsertRowid, ...data }
 }
 
+export function updateTransaction(id, data) {
+  getDB().prepare(`
+    UPDATE transactions SET amount = ?, description = ?, date = ? WHERE id = ?
+  `).run(data.amount, data.description || null, data.date, id)
+  return getDB().prepare(`
+    SELECT t.*, c.full_name AS customer_name
+    FROM transactions t
+    JOIN customers c ON t.customer_id = c.id
+    WHERE t.id = ?
+  `).get(id)
+}
+
 export function deleteTransaction(id) {
   getDB().prepare('DELETE FROM transactions WHERE id = ?').run(id)
 }

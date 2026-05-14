@@ -94,6 +94,7 @@ handle('customers:search',    (_, q)           => db.searchCustomers(q))
 handle('transactions:getByCustomer', (_, cid)     => db.getTransactionsByCustomer(cid))
 handle('transactions:getAll',        (_, filters) => db.getAllTransactions(filters || {}))
 handle('transactions:add',           (_, data)    => db.addTransaction(data))
+handle('transactions:update',        (_, { id, data }) => db.updateTransaction(id, data))
 handle('transactions:delete',        (_, id)      => db.deleteTransaction(id))
 
 // ─── IPC: Analytics ───────────────────────────────────────────────────────────

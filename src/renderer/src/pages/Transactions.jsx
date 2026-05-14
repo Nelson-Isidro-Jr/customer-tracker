@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Filter, X, Receipt } from 'lucide-react'
+import { Plus, Trash2, Edit, Filter, X, Receipt } from 'lucide-react'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useToast } from '../context/ToastContext'
@@ -76,6 +76,66 @@ function AddTxnModal({ onClose, onSuccess }) {
   )
 }
 
+function EditTxnModal({ txn, onClose, onSuccess }) {
+  const { showToast } = useToast()
+  const [form, setForm] = useState({
+    amount: String(txn.amount),
+    description: txn.description || '',
+    date: toDateInput(txn.date)
+  })
+  const [saving, setSaving] = useState(false)
+  const set = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }))
+
+  async function submit(e) {
+    e.preventDefault()
+    if (!form.amount || parseFloat(form.amount) <= 0) { showToast('Enter a valid amount', 'error'); return }
+    setSaving(true)
+    try {
+      await window.electron.invoke('transactions:update', {
+        id: txn.id,
+        data: {
+          amount: parseFloat(form.amount),
+          description: form.description || null,
+          date: form.date
+        }
+      })
+      showToast('Transaction updated!', 'success')
+      onSuccess()
+      onClose()
+    } catch (err) { showToast(err?.message || 'Failed to update transaction', 'error') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <Modal title={`Edit Transaction — ${txn.customer_name}`} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Amount (PHP) *</label>
+          <div className="relative">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">₱</span>
+            <input type="number" min="0.01" step="0.01" className="input-field pl-8"
+              value={form.amount} onChange={set('amount')} placeholder="0.00" required autoFocus />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Date *</label>
+          <input type="date" className="input-field" value={form.date} onChange={set('date')} required />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Description</label>
+          <input className="input-field" value={form.description} onChange={set('description')} placeholder="Optional" />
+        </div>
+        <div className="flex gap-3 pt-1">
+          <button type="button" onClick={onClose} className="btn-secondary flex-1 justify-center">Cancel</button>
+          <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center">
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
 export default function Transactions() {
   const navigate = useNavigate()
   const { showToast } = useToast()
@@ -83,6 +143,7 @@ export default function Transactions() {
   const [transactions, setTransactions] = useState([])
   const [loading, setLoading]           = useState(true)
   const [addOpen, setAddOpen]           = useState(false)
+  const [editTarget, setEditTarget]     = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [filters, setFilters]           = useState({ startDate: '', endDate: '' })
   const [showFilters, setShowFilters]   = useState(false)
@@ -227,9 +288,14 @@ export default function Transactions() {
                     <td className="table-cell text-right font-bold text-slate-900 whitespace-nowrap">{formatPHP(t.amount)}</td>
                     <td className="table-cell text-slate-400 whitespace-nowrap text-xs">{formatRecordedAt(t.created_at)}</td>
                     <td className="table-cell text-right">
-                      <button onClick={() => setDeleteTarget(t)} className="btn-ghost !px-2 !py-1 hover:text-red-500">
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => setEditTarget(t)} className="btn-ghost !px-2 !py-1 hover:text-blue-600" title="Edit">
+                          <Edit size={14} />
+                        </button>
+                        <button onClick={() => setDeleteTarget(t)} className="btn-ghost !px-2 !py-1 hover:text-red-500" title="Delete">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </td>
                   </motion.tr>
                 ))
@@ -251,6 +317,9 @@ export default function Transactions() {
       </motion.div>
 
       {addOpen && <AddTxnModal onClose={() => setAddOpen(false)} onSuccess={load} />}
+      {editTarget && (
+        <EditTxnModal txn={editTarget} onClose={() => setEditTarget(null)} onSuccess={load} />
+      )}
       {deleteTarget && (
         <ConfirmDialog
           title="Delete Transaction"
