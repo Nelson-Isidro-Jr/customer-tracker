@@ -52,9 +52,28 @@ function createWindow() {
   win.once('ready-to-show', () => { win.show(); win.focus() })
 }
 
+function runDailyBackup() {
+  try {
+    const settings = readSettings()
+    if (!settings.autoBackupFolder) return
+    if (!fs.existsSync(settings.autoBackupFolder)) return
+    const today = new Date().toISOString().slice(0, 10)
+    const filename = `customer-tracker-auto-${today}.json`
+    const fullPath = path.join(settings.autoBackupFolder, filename)
+    if (fs.existsSync(fullPath)) return
+    const data = db.exportAllData()
+    fs.writeFileSync(fullPath, JSON.stringify(data, null, 2), 'utf8')
+    writeSettings({ ...settings, autoBackupLastRun: new Date().toISOString() })
+    console.log(`[auto-backup] wrote ${fullPath}`)
+  } catch (err) {
+    console.error('[auto-backup] failed:', err)
+  }
+}
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
   createWindow()
+  runDailyBackup()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -80,6 +99,19 @@ function handle(channel, fn) {
 // ─── IPC: Settings ────────────────────────────────────────────────────────────
 handle('settings:get', () => readSettings())
 handle('settings:set', (_, data) => { writeSettings(data); return true })
+
+handle('dialog:pickFolder', async () => {
+  const { filePaths } = await dialog.showOpenDialog({
+    title: 'Choose backup folder',
+    properties: ['openDirectory', 'createDirectory']
+  })
+  return filePaths?.[0] || null
+})
+
+handle('data:autoBackupNow', () => {
+  runDailyBackup()
+  return readSettings().autoBackupLastRun || null
+})
 
 // ─── IPC: Customers ───────────────────────────────────────────────────────────
 handle('customers:getAll',    ()               => db.getAllCustomers())

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { User, Save, CheckCircle, Trash2, AlertTriangle } from 'lucide-react'
+import { User, Save, CheckCircle, Trash2, AlertTriangle, FolderOpen, ShieldCheck, FolderX } from 'lucide-react'
 import { useSettings } from '../context/SettingsContext'
 import { useToast } from '../context/ToastContext'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -22,6 +22,34 @@ export default function Settings() {
       showToast('Settings saved!', 'success')
     } catch { showToast('Failed to save settings', 'error') }
     finally { setSaving(false) }
+  }
+
+  async function pickBackupFolder() {
+    const folder = await window.electron.invoke('dialog:pickFolder')
+    if (!folder) return
+    try {
+      await updateSettings({ autoBackupFolder: folder })
+      showToast('Auto-backup folder set', 'success')
+    } catch { showToast('Failed to update setting', 'error') }
+  }
+
+  async function disableAutoBackup() {
+    try {
+      await updateSettings({ autoBackupFolder: null })
+      showToast('Auto-backup disabled', 'info')
+    } catch { showToast('Failed to update setting', 'error') }
+  }
+
+  async function runBackupNow() {
+    try {
+      const last = await window.electron.invoke('data:autoBackupNow')
+      if (last) {
+        await updateSettings({ autoBackupLastRun: last })
+        showToast('Backup written', 'success')
+      } else {
+        showToast('Set a backup folder first', 'info')
+      }
+    } catch { showToast('Backup failed', 'error') }
   }
 
   async function handleClearAll() {
@@ -101,6 +129,60 @@ export default function Settings() {
             )}
           </div>
         </form>
+      </motion.div>
+
+      {/* Auto-backup card */}
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.04 }}
+        className="card overflow-hidden"
+      >
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+          <div className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center">
+            <ShieldCheck size={16} className="text-emerald-600" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">Automatic Backup</h2>
+            <p className="text-xs text-slate-500">Saves a JSON snapshot to a folder of your choice, once per day on app launch</p>
+          </div>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {settings.autoBackupFolder ? (
+            <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                <CheckCircle size={13} /> Enabled
+              </div>
+              <div className="text-sm font-mono text-slate-700 break-all">{settings.autoBackupFolder}</div>
+              {settings.autoBackupLastRun && (
+                <div className="text-xs text-slate-500">
+                  Last backup: {new Date(settings.autoBackupLastRun).toLocaleString()}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-500">
+              No backup folder configured. Pick a folder (OneDrive, Documents, USB drive…) and a snapshot will be saved automatically each day you open the app.
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={pickBackupFolder} className="btn-primary">
+              <FolderOpen size={15} /> {settings.autoBackupFolder ? 'Change Folder' : 'Choose Folder'}
+            </button>
+            {settings.autoBackupFolder && (
+              <>
+                <button onClick={runBackupNow} className="btn-secondary">
+                  <Save size={15} /> Back Up Now
+                </button>
+                <button onClick={disableAutoBackup} className="btn-ghost hover:text-red-500">
+                  <FolderX size={15} /> Disable
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       </motion.div>
 
       {/* Danger zone */}
