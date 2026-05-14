@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Edit, Filter, X, Receipt } from 'lucide-react'
+import { Plus, Trash2, Edit, Filter, X, Receipt, Search } from 'lucide-react'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useToast } from '../context/ToastContext'
@@ -147,6 +147,7 @@ export default function Transactions() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [filters, setFilters]           = useState({ startDate: '', endDate: '' })
   const [showFilters, setShowFilters]   = useState(false)
+  const [query, setQuery]               = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -172,13 +173,30 @@ export default function Transactions() {
 
   const clearFilters = () => setFilters({ startDate: '', endDate: '' })
   const hasFilters = filters.startDate || filters.endDate
-  const total = transactions.reduce((s, t) => s + t.amount, 0)
+
+  const q = query.trim().toLowerCase()
+  const visible = q
+    ? transactions.filter(t =>
+        (t.customer_name || '').toLowerCase().includes(q) ||
+        (t.description  || '').toLowerCase().includes(q)
+      )
+    : transactions
+  const total = visible.reduce((s, t) => s + t.amount, 0)
 
   return (
     <div className="page-container">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+          <div className="relative flex-1 max-w-md">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              className="input-field pl-9"
+              placeholder="Search by customer or description…"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+            />
+          </div>
           <button
             onClick={() => setShowFilters(v => !v)}
             className={`btn-secondary ${hasFilters ? '!border-blue-400 !text-blue-600' : ''}`}
@@ -224,11 +242,13 @@ export default function Transactions() {
       </AnimatePresence>
 
       {/* Summary */}
-      {transactions.length > 0 && (
+      {visible.length > 0 && (
         <div className="flex items-center gap-4 px-1">
           <div className="flex items-center gap-2 text-sm">
             <Receipt size={14} className="text-slate-400" />
-            <span className="text-slate-500">{transactions.length} records</span>
+            <span className="text-slate-500">
+              {visible.length} {q ? `of ${transactions.length}` : ''} records
+            </span>
           </div>
           <div className="text-sm font-bold text-slate-900">
             Total: <span className="text-blue-600">{formatPHP(total)}</span>
@@ -254,14 +274,16 @@ export default function Transactions() {
             <tbody className="divide-y divide-slate-50">
               {loading ? (
                 <tr><td colSpan={7} className="px-5 py-12 text-center text-slate-400 text-sm">Loading…</td></tr>
-              ) : transactions.length === 0 ? (
+              ) : visible.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center text-slate-400 text-sm">
-                    {hasFilters ? 'No transactions for the selected period.' : 'No transactions yet.'}
+                    {q ? 'No transactions match your search.'
+                      : hasFilters ? 'No transactions for the selected period.'
+                      : 'No transactions yet.'}
                   </td>
                 </tr>
               ) : (
-                transactions.map((t, i) => (
+                visible.map((t, i) => (
                   <motion.tr
                     key={t.id}
                     initial={{ opacity: 0 }}
@@ -301,11 +323,11 @@ export default function Transactions() {
                 ))
               )}
             </tbody>
-            {transactions.length > 0 && (
+            {visible.length > 0 && (
               <tfoot>
                 <tr className="bg-slate-50 border-t border-slate-200">
                   <td colSpan={5} className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    {transactions.length} Transactions — Total
+                    {visible.length} Transactions — Total
                   </td>
                   <td className="px-5 py-3 text-right text-base font-bold text-blue-700">{formatPHP(total)}</td>
                   <td />
