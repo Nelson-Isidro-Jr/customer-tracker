@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   LayoutDashboard, Users, Receipt, BarChart2,
-  Database, ChevronRight, TrendingUp, Settings
+  Database, ChevronRight, TrendingUp, Settings, History
 } from 'lucide-react'
 import { useSettings } from '../context/SettingsContext'
 
@@ -10,6 +10,7 @@ const NAV = [
   { to: '/',             label: 'Dashboard',    icon: LayoutDashboard, end: true },
   { to: '/customers',    label: 'Customers',    icon: Users },
   { to: '/transactions', label: 'Transactions', icon: Receipt },
+  { to: '/history',      label: 'History',      icon: History },
   { to: '/reports',      label: 'Reports',      icon: BarChart2 },
   { to: '/data',         label: 'Import / Export', icon: Database },
 ]
@@ -100,6 +101,7 @@ const PAGE_TITLES = {
   '/': 'Dashboard',
   '/customers': 'Customers',
   '/transactions': 'Transactions',
+  '/history': 'Activity History',
   '/reports': 'Reports',
   '/data': 'Import / Export',
   '/settings': 'Settings'
