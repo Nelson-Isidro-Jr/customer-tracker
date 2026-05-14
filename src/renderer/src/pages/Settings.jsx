@@ -169,7 +169,8 @@ export default function Settings() {
       {confirmClear && (
         <ConfirmDialog
           title="Clear All Data"
-          message="This will permanently delete ALL customers and ALL transactions. This cannot be undone. Are you absolutely sure?"
+          message="This will permanently delete ALL customers and ALL transactions. This action cannot be undone."
+          requireType="DELETE"
           onConfirm={handleClearAll}
           onCancel={() => setConfirmClear(false)}
         />
