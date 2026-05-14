@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 title Customer Tracker - Build Installer
 color 0A
 
@@ -25,6 +26,10 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 for /f "tokens=*" %%v in ('node --version') do echo  [OK] Node.js %%v found
+
+:: Read version from package.json (single source of truth)
+for /f "tokens=*" %%v in ('node -p "require('./package.json').version"') do set APP_VERSION=%%v
+echo  [OK] Building version %APP_VERSION%
 
 echo.
 echo [2/4] Installing dependencies...
@@ -76,7 +81,7 @@ echo.
 echo   Your installer is ready in:
 echo   dist-installer\
 echo.
-echo   File:  Customer Tracker Setup 1.0.0.exe
+echo   File:  Customer Tracker Setup %APP_VERSION%.exe
 echo.
 echo   Double-click it to install the app.
 echo  =========================================
