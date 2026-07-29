@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Trash2, Edit, Filter, X, Receipt, Search } from 'lucide-react'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Pagination from '../components/Pagination'
 import { useToast } from '../context/ToastContext'
 import { formatPHP, formatDate, formatDateShort, formatRecordedAt, toDateInput } from '../utils/format'
+import { Page, Pop, PopGrid } from '../components/Cascade'
 
 function AddTxnModal({ onClose, onSuccess }) {
   const { showToast } = useToast()
@@ -140,7 +142,9 @@ export default function Transactions() {
   const navigate = useNavigate()
   const { showToast } = useToast()
 
-  const [transactions, setTransactions] = useState([])
+  const [rows, setRows]                 = useState([])
+  const [total, setTotal]               = useState(0)
+  const [sumAmount, setSumAmount]       = useState(0)
   const [loading, setLoading]           = useState(true)
   const [addOpen, setAddOpen]           = useState(false)
   const [editTarget, setEditTarget]     = useState(null)
@@ -148,45 +152,64 @@ export default function Transactions() {
   const [filters, setFilters]           = useState({ startDate: '', endDate: '' })
   const [showFilters, setShowFilters]   = useState(false)
   const [query, setQuery]               = useState('')
+  const [search, setSearch]             = useState('')
+  const [page, setPage]                 = useState(1)
+  const [pageSize, setPageSize]         = useState(50)
+
+  // Debounce the search box so a fast typist fires one query, not one per key.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(query.trim()), 250)
+    return () => clearTimeout(t)
+  }, [query])
+
+  const reqIdRef = useRef(0)
 
   const load = useCallback(async () => {
+    const myReqId = ++reqIdRef.current
     setLoading(true)
     try {
-      const f = {}
-      if (filters.startDate) f.startDate = filters.startDate
-      if (filters.endDate)   f.endDate   = filters.endDate
-      const data = await window.electron.invoke('transactions:getAll', f)
-      setTransactions(data)
-    } finally { setLoading(false) }
-  }, [filters])
+      const res = await window.electron.invoke('transactions:getPage', {
+        page, pageSize, search,
+        startDate: filters.startDate || null,
+        endDate:   filters.endDate   || null
+      })
+      if (myReqId !== reqIdRef.current) return   // a newer request already won
+      setRows(res.rows)
+      setTotal(res.total)
+      setSumAmount(res.sumAmount)
+    } catch (err) {
+      if (myReqId === reqIdRef.current) showToast(err?.message || 'Failed to load transactions', 'error')
+    } finally {
+      if (myReqId === reqIdRef.current) setLoading(false)
+    }
+  }, [page, pageSize, search, filters, showToast])
 
   useEffect(() => { load() }, [load])
+
+  // Any change to what is being listed sends you back to page 1 — done in the
+  // handlers rather than an effect so it never fires two requests.
+  const setSearchQuery = (v) => { setQuery(v); setPage(1) }
+  const setFilter = (k) => (e) => { setFilters(p => ({ ...p, [k]: e.target.value })); setPage(1) }
+  const clearFilters = () => { setFilters({ startDate: '', endDate: '' }); setPage(1) }
+  const changePageSize = (n) => { setPageSize(n); setPage(1) }
 
   async function handleDelete() {
     try {
       await window.electron.invoke('transactions:delete', deleteTarget.id)
       showToast('Transaction deleted', 'info')
       setDeleteTarget(null)
-      load()
+      // Deleting the only row on the last page would strand us past the end.
+      if (rows.length === 1 && page > 1) setPage(p => p - 1)
+      else load()
     } catch (err) { showToast(err?.message || 'Failed to delete transaction', 'error') }
   }
 
-  const clearFilters = () => setFilters({ startDate: '', endDate: '' })
   const hasFilters = filters.startDate || filters.endDate
 
-  const q = query.trim().toLowerCase()
-  const visible = q
-    ? transactions.filter(t =>
-        (t.customer_name || '').toLowerCase().includes(q) ||
-        (t.description  || '').toLowerCase().includes(q)
-      )
-    : transactions
-  const total = visible.reduce((s, t) => s + t.amount, 0)
-
   return (
-    <div className="page-container">
+    <Page>
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      <Pop className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-1 min-w-[240px]">
           <div className="relative flex-1 max-w-md">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -194,7 +217,7 @@ export default function Transactions() {
               className="input-field pl-9"
               placeholder="Search by customer or description…"
               value={query}
-              onChange={e => setQuery(e.target.value)}
+              onChange={e => setSearchQuery(e.target.value)}
             />
           </div>
           <button
@@ -212,7 +235,7 @@ export default function Transactions() {
         <button onClick={() => setAddOpen(true)} className="btn-primary">
           <Plus size={16} /> Add Transaction
         </button>
-      </div>
+      </Pop>
 
       {/* Filter bar */}
       <AnimatePresence>
@@ -228,39 +251,42 @@ export default function Transactions() {
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">From Date</label>
                 <input type="date" className="input-field"
                   value={filters.startDate}
-                  onChange={e => setFilters(p => ({ ...p, startDate: e.target.value }))} />
+                  onChange={setFilter('startDate')} />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">To Date</label>
                 <input type="date" className="input-field"
                   value={filters.endDate}
-                  onChange={e => setFilters(p => ({ ...p, endDate: e.target.value }))} />
+                  onChange={setFilter('endDate')} />
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Summary */}
-      {visible.length > 0 && (
+      {/* Summary — counts and totals cover every matching record, not just this page */}
+      {total > 0 && (
         <div className="flex items-center gap-4 px-1">
           <div className="flex items-center gap-2 text-sm">
             <Receipt size={14} className="text-slate-400" />
             <span className="text-slate-500">
-              {visible.length} {q ? `of ${transactions.length}` : ''} records
+              {total.toLocaleString('en-PH')} {total === 1 ? 'record' : 'records'}
+              {(search || hasFilters) && ' matching'}
             </span>
           </div>
           <div className="text-sm font-bold text-slate-900">
-            Total: <span className="text-blue-600">{formatPHP(total)}</span>
+            Total: <span className="text-blue-600">{formatPHP(sumAmount)}</span>
           </div>
         </div>
       )}
 
       {/* Table */}
-      <motion.div className="card overflow-hidden" layout>
-        <div className="overflow-x-auto">
+      <Pop
+        className="card overflow-hidden"
+      >
+        <div className="overflow-x-auto max-h-[calc(100vh-320px)] overflow-y-auto">
           <table className="w-full">
-            <thead>
+            <thead className="sticky top-0 bg-white z-10">
               <tr>
                 <th className="table-header">#</th>
                 <th className="table-header">Date</th>
@@ -274,24 +300,21 @@ export default function Transactions() {
             <tbody className="divide-y divide-slate-50">
               {loading ? (
                 <tr><td colSpan={7} className="px-5 py-12 text-center text-slate-400 text-sm">Loading…</td></tr>
-              ) : visible.length === 0 ? (
+              ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center text-slate-400 text-sm">
-                    {q ? 'No transactions match your search.'
+                    {search ? 'No transactions match your search.'
                       : hasFilters ? 'No transactions for the selected period.'
                       : 'No transactions yet.'}
                   </td>
                 </tr>
               ) : (
-                visible.map((t, i) => (
-                  <motion.tr
+                rows.map((t, i) => (
+                  <tr
                     key={t.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: i * 0.015 }}
                     className="hover:bg-slate-50/60 transition-colors"
                   >
-                    <td className="table-cell text-slate-400 font-medium w-10">{i + 1}</td>
+                    <td className="table-cell text-slate-400 font-medium w-10">{(page - 1) * pageSize + i + 1}</td>
                     <td className="table-cell font-medium text-slate-700 whitespace-nowrap">{formatDateShort(t.date)}</td>
                     <td className="table-cell">
                       <button
@@ -319,24 +342,35 @@ export default function Transactions() {
                         </button>
                       </div>
                     </td>
-                  </motion.tr>
+                  </tr>
                 ))
               )}
             </tbody>
-            {visible.length > 0 && (
-              <tfoot>
+            {total > 0 && (
+              <tfoot className="sticky bottom-0">
                 <tr className="bg-slate-50 border-t border-slate-200">
-                  <td colSpan={5} className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    {visible.length} Transactions — Total
+                  <td colSpan={4} className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    {total.toLocaleString('en-PH')} Transactions — Total
                   </td>
-                  <td className="px-5 py-3 text-right text-base font-bold text-blue-700">{formatPHP(total)}</td>
-                  <td />
+                  <td className="px-5 py-3 text-right text-base font-bold text-blue-700 whitespace-nowrap">
+                    {formatPHP(sumAmount)}
+                  </td>
+                  <td colSpan={2} />
                 </tr>
               </tfoot>
             )}
           </table>
         </div>
-      </motion.div>
+
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          loading={loading}
+          onPageChange={setPage}
+          onPageSizeChange={changePageSize}
+        />
+      </Pop>
 
       {addOpen && <AddTxnModal onClose={() => setAddOpen(false)} onSuccess={load} />}
       {editTarget && (
@@ -350,6 +384,6 @@ export default function Transactions() {
           onCancel={() => setDeleteTarget(null)}
         />
       )}
-    </div>
+    </Page>
   )
 }

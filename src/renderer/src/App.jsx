@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import Customers from './pages/Customers'
 import CustomerDetail from './pages/CustomerDetail'
 import Transactions from './pages/Transactions'
+import Rewards from './pages/Rewards'
 import History from './pages/History'
 import Reports from './pages/Reports'
 import DataPage from './pages/DataPage'
@@ -22,6 +23,7 @@ export default function App() {
               <Route path="/customers"        element={<Customers />} />
               <Route path="/customers/:id"    element={<CustomerDetail />} />
               <Route path="/transactions"     element={<Transactions />} />
+              <Route path="/rewards"          element={<Rewards />} />
               <Route path="/history"          element={<History />} />
               <Route path="/reports"          element={<Reports />} />
               <Route path="/data"             element={<DataPage />} />

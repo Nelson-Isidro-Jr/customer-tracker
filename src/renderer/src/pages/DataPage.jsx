@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Upload, Download, FileSpreadsheet, Database, AlertTriangle, CheckCircle } from 'lucide-react'
 import { useToast } from '../context/ToastContext'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { Page, Pop, PopGrid } from '../components/Cascade'
 
 function ActionCard({ icon: Icon, iconBg, title, description, buttonLabel, buttonClass, onClick, loading }) {
   return (
@@ -61,9 +62,9 @@ export default function DataPage() {
   }
 
   return (
-    <div className="page-container">
+    <Page>
       {/* Info banner */}
-      <div className="card p-4 flex items-start gap-3 border-blue-200 bg-blue-50/60">
+      <Pop className="card p-4 flex items-start gap-3 border-blue-200 bg-blue-50/60">
         <Database size={18} className="text-blue-500 flex-shrink-0 mt-0.5" />
         <div>
           <div className="text-sm font-semibold text-blue-900 mb-0.5">Database Management</div>
@@ -72,10 +73,10 @@ export default function DataPage() {
             Export to Excel for clean spreadsheet reports. <strong>Importing replaces all current data.</strong>
           </div>
         </div>
-      </div>
+      </Pop>
 
       {/* Action cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <Pop className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <ActionCard
           icon={Download}
           iconBg="bg-emerald-600"
@@ -106,10 +107,10 @@ export default function DataPage() {
           onClick={handleExportExcel}
           loading={loading === 'excel'}
         />
-      </div>
+      </Pop>
 
       {/* Tips */}
-      <div className="card p-5">
+      <Pop className="card p-5">
         <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
           <CheckCircle size={15} className="text-emerald-500" /> Tips
         </h3>
@@ -119,7 +120,7 @@ export default function DataPage() {
           <li className="flex items-start gap-2"><span className="text-slate-300 mt-0.5">•</span> Use the Excel export for sharing reports with others or opening in Microsoft Excel / Google Sheets.</li>
           <li className="flex items-start gap-2"><span className="text-slate-300 mt-0.5">•</span> Only import backups created by this application (Customer Tracker JSON format).</li>
         </ul>
-      </div>
+      </Pop>
 
       {confirmImport && (
         <ConfirmDialog
@@ -129,6 +130,6 @@ export default function DataPage() {
           onCancel={() => setConfirmImport(false)}
         />
       )}
-    </div>
+    </Page>
   )
 }

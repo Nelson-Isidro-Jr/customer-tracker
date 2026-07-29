@@ -1,14 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Mail, Phone, Plus, Trash2, Edit,
-  ShoppingBag, DollarSign, Calendar, TrendingUp, FileText
+  ShoppingBag, DollarSign, Calendar, TrendingUp, FileText, Award, Gift
 } from 'lucide-react'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useToast } from '../context/ToastContext'
 import { formatPHP, formatDate, formatDateShort, formatRecordedAt, toDateInput } from '../utils/format'
+import { Page, Pop, PopGrid } from '../components/Cascade'
+import Pagination from '../components/Pagination'
+
+const TXN_PAGE_SIZE = 50
 
 function AddTxnModal({ customerId, onClose, onSuccess }) {
   const { showToast } = useToast()
@@ -189,6 +193,10 @@ export default function CustomerDetail() {
 
   const [customer, setCustomer]       = useState(null)
   const [transactions, setTransactions] = useState([])
+  const [points, setPoints]           = useState(null)
+  const [redemptions, setRedemptions] = useState([])
+  const [txnTotal, setTxnTotal]       = useState(0)
+  const [page, setPage]               = useState(1)
   const [loading, setLoading]         = useState(true)
   const [addTxnOpen, setAddTxnOpen]   = useState(false)
   const [editTxnTarget, setEditTxnTarget] = useState(null)
@@ -196,20 +204,31 @@ export default function CustomerDetail() {
   const [deleteTxn, setDeleteTxn]     = useState(null)
   const [deleteCustomer, setDeleteCustomer] = useState(false)
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [c, txns] = await Promise.all([
+      const [c, txns, pts, reds] = await Promise.all([
         window.electron.invoke('customers:getById', parseInt(id)),
-        window.electron.invoke('transactions:getByCustomer', parseInt(id))
+        // Paginated: a long-standing customer can have thousands of rows.
+        window.electron.invoke('transactions:getPage', {
+          customerId: parseInt(id), page, pageSize: TXN_PAGE_SIZE
+        }),
+        window.electron.invoke('points:customer', parseInt(id)),
+        window.electron.invoke('redemptions:getPage', { customerId: parseInt(id), pageSize: 10 })
       ])
       if (!c) { navigate('/customers'); return }
       setCustomer(c)
-      setTransactions(txns)
+      setTransactions(txns.rows)
+      setTxnTotal(txns.total)
+      setPoints(pts)
+      setRedemptions(reds.rows)
     } finally { setLoading(false) }
-  }
+  }, [id, page, navigate])
 
-  useEffect(() => { load() }, [id])
+  useEffect(() => { load() }, [load])
+
+  // Switching to another customer starts back at page 1.
+  useEffect(() => { setPage(1) }, [id])
 
   async function handleDeleteTxn() {
     try {
@@ -238,9 +257,9 @@ export default function CustomerDetail() {
   const avgTxn = transactions.length ? customer.total_purchases / transactions.length : 0
 
   return (
-    <div className="page-container">
+    <Page>
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <Pop className="flex items-start justify-between">
         <div className="flex items-center gap-4">
           <button onClick={() => navigate('/customers')} className="btn-ghost !px-2 !py-2">
             <ArrowLeft size={18} />
@@ -281,10 +300,10 @@ export default function CustomerDetail() {
             <Trash2 size={15} />
           </button>
         </div>
-      </div>
+      </Pop>
 
       {/* Stat mini cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <Pop className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'Total Spent', value: formatPHP(customer.total_purchases), icon: DollarSign, color: 'text-blue-600 bg-blue-50' },
           { label: 'Transactions', value: customer.transaction_count, icon: ShoppingBag, color: 'text-emerald-600 bg-emerald-50' },
@@ -307,7 +326,63 @@ export default function CustomerDetail() {
             <div className="text-base font-bold text-slate-900">{value}</div>
           </motion.div>
         ))}
-      </div>
+      </Pop>
+
+      {/* Points & redemptions */}
+      {points && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="card overflow-hidden"
+        >
+          <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center">
+                <Award size={14} className="text-amber-600" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">Reward Points</h3>
+            </div>
+            <button onClick={() => navigate('/rewards')} className="btn-ghost !py-1.5 !text-xs">
+              <Gift size={13} /> Redeem
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 divide-x divide-slate-100">
+            {[
+              { label: 'Earned',    value: points.points_earned,   tone: 'text-slate-900' },
+              { label: 'Redeemed',  value: points.points_redeemed, tone: 'text-slate-500' },
+              { label: 'Available', value: points.points_balance,  tone: 'text-amber-600' }
+            ].map(({ label, value, tone }) => (
+              <div key={label} className="px-5 py-4 text-center">
+                <div className={`text-xl font-bold ${tone}`}>{(value || 0).toLocaleString('en-PH')}</div>
+                <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {redemptions.length > 0 && (
+            <div className="border-t border-slate-100 divide-y divide-slate-50">
+              {redemptions.map(r => (
+                <div key={r.id} className="px-5 py-2.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-6 h-6 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                      <Gift size={12} className="text-amber-600" />
+                    </div>
+                    <span className="text-sm text-slate-700 truncate">
+                      {r.quantity > 1 && `${r.quantity}× `}{r.reward_name}
+                    </span>
+                    <span className="text-xs text-slate-400 whitespace-nowrap">{formatRecordedAt(r.created_at)}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-amber-700 whitespace-nowrap">
+                    −{(r.points_spent || 0).toLocaleString('en-PH')} pts
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
 
       {/* Notes */}
       {customer.notes && (
@@ -318,10 +393,7 @@ export default function CustomerDetail() {
       )}
 
       {/* Transactions */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
+      <Pop
         className="card overflow-hidden"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
@@ -330,9 +402,9 @@ export default function CustomerDetail() {
             <Plus size={14} /> Add Transaction
           </button>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[calc(100vh-420px)] overflow-y-auto">
           <table className="w-full">
-            <thead>
+            <thead className="sticky top-0 bg-white z-10">
               <tr>
                 <th className="table-header">Date</th>
                 <th className="table-header">Description</th>
@@ -348,12 +420,9 @@ export default function CustomerDetail() {
                     No transactions yet. Add the first one!
                   </td>
                 </tr>
-              ) : transactions.map((t, i) => (
-                <motion.tr
+              ) : transactions.map((t) => (
+                <tr
                   key={t.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: i * 0.02 }}
                   className="hover:bg-slate-50/60 transition-colors"
                 >
                   <td className="table-cell font-medium text-slate-700">{formatDate(t.date)}</td>
@@ -370,11 +439,11 @@ export default function CustomerDetail() {
                       </button>
                     </div>
                   </td>
-                </motion.tr>
+                </tr>
               ))}
             </tbody>
             {transactions.length > 0 && (
-              <tfoot>
+              <tfoot className="sticky bottom-0">
                 <tr className="bg-slate-50 border-t border-slate-200">
                   <td colSpan={2} className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Total
@@ -388,7 +457,15 @@ export default function CustomerDetail() {
             )}
           </table>
         </div>
-      </motion.div>
+
+        <Pagination
+          page={page}
+          pageSize={TXN_PAGE_SIZE}
+          total={txnTotal}
+          loading={loading}
+          onPageChange={setPage}
+        />
+      </Pop>
 
       {addTxnOpen && (
         <AddTxnModal customerId={parseInt(id)} onClose={() => setAddTxnOpen(false)} onSuccess={load} />
@@ -415,6 +492,6 @@ export default function CustomerDetail() {
           onCancel={() => setDeleteCustomer(false)}
         />
       )}
-    </div>
+    </Page>
   )
 }

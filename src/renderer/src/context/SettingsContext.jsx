@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect } from 'react'
 
 const SettingsContext = createContext(null)
 
-const DEFAULTS = { userName: 'Nelson Isidro' }
+const DEFAULTS = { userName: 'Nelson Isidro', avatar: null }
 
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(DEFAULTS)

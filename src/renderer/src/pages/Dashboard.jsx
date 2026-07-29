@@ -9,16 +9,11 @@ import {
   Tooltip, ResponsiveContainer
 } from 'recharts'
 import { formatPHP, formatDateShort, MONTH_SHORT } from '../utils/format'
+import { Page, Pop, PopGrid, cascadeItem } from '../components/Cascade'
 
-const FADE_UP = (delay = 0) => ({
-  initial: { opacity: 0, y: 18 },
-  animate: { opacity: 1, y: 0 },
-  transition: { delay, duration: 0.35 }
-})
-
-function StatCard({ title, value, sub, icon: Icon, iconBg, delay }) {
+function StatCard({ title, value, sub, icon: Icon, iconBg }) {
   return (
-    <motion.div {...FADE_UP(delay)} className="card p-5">
+    <motion.div variants={cascadeItem} className="card p-5">
       <div className="flex items-center justify-between mb-4">
         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{title}</span>
         <div className={`w-9 h-9 ${iconBg} rounded-xl flex items-center justify-center`}>
@@ -31,9 +26,9 @@ function StatCard({ title, value, sub, icon: Icon, iconBg, delay }) {
   )
 }
 
-function BestBuyerCard({ label, buyer, gradient, delay }) {
+function BestBuyerCard({ label, buyer, gradient }) {
   return (
-    <motion.div {...FADE_UP(delay)} className={`rounded-2xl p-5 text-white ${gradient}`}>
+    <motion.div variants={cascadeItem} className={`rounded-2xl p-5 text-white ${gradient}`}>
       <div className="flex items-center gap-2 mb-3 opacity-80">
         <Trophy size={15} />
         <span className="text-xs font-semibold uppercase tracking-wider">{label}</span>
@@ -83,7 +78,7 @@ export default function Dashboard() {
       const [s, rev, txns, bm, by, tops] = await Promise.all([
         window.electron.invoke('analytics:dashboard'),
         window.electron.invoke('analytics:monthlyRevenue', year),
-        window.electron.invoke('transactions:getAll', {}),
+        window.electron.invoke('transactions:getRecent', 10),
         window.electron.invoke('analytics:bestBuyerMonthly', { year, month }),
         window.electron.invoke('analytics:bestBuyerYearly', year),
         window.electron.invoke('analytics:topBuyers', { year: null, month: null, limit: 5 })
@@ -93,7 +88,7 @@ export default function Dashboard() {
         const d = rev.find(r => parseInt(r.month) === i + 1)
         return { month: m, revenue: d?.total || 0, count: d?.count || 0 }
       }))
-      setRecentTxns(txns.slice(0, 10))
+      setRecentTxns(txns)
       setBestMonthly(bm)
       setBestYearly(by)
       setTopBuyers(tops)
@@ -111,34 +106,32 @@ export default function Dashboard() {
   )
 
   return (
-    <div className="page-container">
+    <Page>
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Revenue"   value={formatPHP(stats?.totalRevenue)}    sub="All time"           icon={DollarSign} iconBg="bg-blue-600"    delay={0} />
-        <StatCard title="Total Customers" value={stats?.totalCustomers ?? 0}        sub="Registered"         icon={Users}      iconBg="bg-emerald-500" delay={0.05} />
-        <StatCard title="This Month"      value={formatPHP(stats?.monthlyRevenue)}  sub={`${MONTH_SHORT[month-1]} ${year}`} icon={TrendingUp} iconBg="bg-amber-500" delay={0.1} />
-        <StatCard title="Transactions"    value={stats?.totalTransactions ?? 0}     sub="Total records"      icon={ShoppingCart} iconBg="bg-violet-500" delay={0.15} />
-      </div>
+      <PopGrid className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard title="Total Revenue"   value={formatPHP(stats?.totalRevenue)}    sub="All time"           icon={DollarSign} iconBg="bg-blue-600"    />
+        <StatCard title="Total Customers" value={stats?.totalCustomers ?? 0}        sub="Registered"         icon={Users}      iconBg="bg-emerald-500" />
+        <StatCard title="This Month"      value={formatPHP(stats?.monthlyRevenue)}  sub={`${MONTH_SHORT[month-1]} ${year}`} icon={TrendingUp} iconBg="bg-amber-500" />
+        <StatCard title="Transactions"    value={stats?.totalTransactions ?? 0}     sub="Total records"      icon={ShoppingCart} iconBg="bg-violet-500" />
+      </PopGrid>
 
       {/* Best buyers */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <PopGrid className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <BestBuyerCard
           label={`Best Buyer — ${MONTH_SHORT[month-1]} ${year}`}
           buyer={bestMonthly}
           gradient="bg-gradient-to-br from-amber-500 to-orange-600"
-          delay={0.2}
         />
         <BestBuyerCard
           label={`Best Buyer — Year ${year}`}
           buyer={bestYearly}
           gradient="bg-gradient-to-br from-blue-600 to-indigo-700"
-          delay={0.25}
         />
-      </div>
+      </PopGrid>
 
       {/* Chart + Top buyers */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <motion.div {...FADE_UP(0.3)} className="card lg:col-span-2 p-5">
+      <PopGrid className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <motion.div variants={cascadeItem} className="card lg:col-span-2 p-5">
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-sm font-semibold text-slate-900">Monthly Revenue — {year}</h3>
           </div>
@@ -154,7 +147,7 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </motion.div>
 
-        <motion.div {...FADE_UP(0.35)} className="card p-5">
+        <motion.div variants={cascadeItem} className="card p-5">
           <h3 className="text-sm font-semibold text-slate-900 mb-4">All-Time Top Buyers</h3>
           {topBuyers.length === 0 ? (
             <div className="text-slate-400 text-sm text-center py-10">No data yet</div>
@@ -188,10 +181,10 @@ export default function Dashboard() {
             </div>
           )}
         </motion.div>
-      </div>
+      </PopGrid>
 
       {/* Recent transactions */}
-      <motion.div {...FADE_UP(0.4)} className="card overflow-hidden">
+      <motion.div variants={cascadeItem} className="card overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <h3 className="text-sm font-semibold text-slate-900">Recent Transactions</h3>
           <button onClick={() => navigate('/transactions')} className="btn-ghost !py-1 text-xs">
@@ -234,6 +227,6 @@ export default function Dashboard() {
           </table>
         </div>
       </motion.div>
-    </div>
+    </Page>
   )
 }

@@ -8,6 +8,10 @@ import {
 } from 'recharts'
 import { useToast } from '../context/ToastContext'
 import { formatPHP, formatDate, formatDateShort, MONTH_NAMES, toDateInput } from '../utils/format'
+import { Page, Pop, PopGrid } from '../components/Cascade'
+import Pagination from '../components/Pagination'
+
+const REPORT_PAGE_SIZE = 50
 
 const now = new Date()
 
@@ -19,27 +23,50 @@ export default function Reports() {
   const [dailyDate, setDailyDate]     = useState(toDateInput())
   const [dailyReport, setDailyReport] = useState(null)
   const [dailyLoading, setDailyLoading] = useState(false)
+  const [dailyRows, setDailyRows] = useState(null)
+  const [dailyPage, setDailyPage] = useState(1)
 
   // Monthly state
   const [mYear, setMYear]   = useState(now.getFullYear())
   const [mMonth, setMMonth] = useState(now.getMonth() + 1)
   const [mReport, setMReport] = useState(null)
   const [mLoading, setMLoading] = useState(false)
+  const [mRows, setMRows] = useState(null)
+  const [mPage, setMPage] = useState(1)
 
-  async function loadDaily() {
+  // Totals come from SQL aggregates; the table pulls one page of rows. A busy
+  // month used to ship every transaction over IPC just to render a table.
+  async function loadDaily(toPage = 1) {
     setDailyLoading(true)
     try {
-      const r = await window.electron.invoke('reports:daily', dailyDate)
+      const [r, rows] = await Promise.all([
+        window.electron.invoke('reports:dailySummary', dailyDate),
+        window.electron.invoke('transactions:getPage', {
+          startDate: dailyDate, endDate: dailyDate, page: toPage, pageSize: REPORT_PAGE_SIZE
+        })
+      ])
       setDailyReport(r)
+      setDailyRows(rows)
+      setDailyPage(toPage)
     } catch { showToast('Failed to load report', 'error') }
     finally { setDailyLoading(false) }
   }
 
-  async function loadMonthly() {
+  async function loadMonthly(toPage = 1) {
     setMLoading(true)
     try {
-      const r = await window.electron.invoke('reports:monthly', { year: mYear, month: mMonth })
+      const last = new Date(mYear, mMonth, 0).getDate()
+      const startDate = `${mYear}-${String(mMonth).padStart(2, '0')}-01`
+      const endDate   = `${mYear}-${String(mMonth).padStart(2, '0')}-${String(last).padStart(2, '0')}`
+      const [r, rows] = await Promise.all([
+        window.electron.invoke('reports:monthlySummary', { year: mYear, month: mMonth }),
+        window.electron.invoke('transactions:getPage', {
+          startDate, endDate, page: toPage, pageSize: REPORT_PAGE_SIZE
+        })
+      ])
       setMReport(r)
+      setMRows(rows)
+      setMPage(toPage)
     } catch { showToast('Failed to load report', 'error') }
     finally { setMLoading(false) }
   }
@@ -65,9 +92,9 @@ export default function Reports() {
   const years = Array.from({ length: 10 }, (_, i) => now.getFullYear() - i)
 
   return (
-    <div className="page-container">
+    <Page>
       {/* Tabs */}
-      <div className="inline-flex bg-slate-100 rounded-xl p-1 gap-1">
+      <Pop className="inline-flex bg-slate-100 rounded-xl p-1 gap-1">
         {[
           { key: 'daily',   label: 'Daily Report',   icon: Calendar },
           { key: 'monthly', label: 'Monthly Report', icon: BarChart3 }
@@ -84,7 +111,7 @@ export default function Reports() {
             <Icon size={15} /> {label}
           </button>
         ))}
-      </div>
+      </Pop>
 
       <AnimatePresence mode="wait">
         {tab === 'daily' ? (
@@ -157,18 +184,18 @@ export default function Reports() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {dailyReport.transactions.length === 0 ? (
+                        {!dailyRows || dailyRows.rows.length === 0 ? (
                           <tr><td colSpan={4} className="px-5 py-10 text-center text-slate-400 text-sm">No sales on this date.</td></tr>
-                        ) : dailyReport.transactions.map((t, i) => (
+                        ) : dailyRows.rows.map((t, i) => (
                           <tr key={t.id} className="hover:bg-slate-50/60 transition-colors">
-                            <td className="table-cell text-slate-400">{i + 1}</td>
+                            <td className="table-cell text-slate-400">{(dailyPage - 1) * REPORT_PAGE_SIZE + i + 1}</td>
                             <td className="table-cell font-medium text-slate-800">{t.customer_name}</td>
                             <td className="table-cell text-slate-500">{t.description || '—'}</td>
                             <td className="table-cell text-right font-bold text-slate-900">{formatPHP(t.amount)}</td>
                           </tr>
                         ))}
                       </tbody>
-                      {dailyReport.transactions.length > 0 && (
+                      {dailyRows && dailyRows.total > 0 && (
                         <tfoot>
                           <tr className="bg-slate-50 border-t border-slate-200">
                             <td colSpan={3} className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Total</td>
@@ -178,6 +205,14 @@ export default function Reports() {
                       )}
                     </table>
                   </div>
+
+                  <Pagination
+                    page={dailyPage}
+                    pageSize={REPORT_PAGE_SIZE}
+                    total={dailyRows?.total || 0}
+                    loading={dailyLoading}
+                    onPageChange={loadDaily}
+                  />
                 </div>
               </motion.div>
             )}
@@ -286,9 +321,9 @@ export default function Reports() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {mReport.transactions.length === 0 ? (
+                        {!mRows || mRows.rows.length === 0 ? (
                           <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-400 text-sm">No transactions this month.</td></tr>
-                        ) : mReport.transactions.map((t, i) => (
+                        ) : mRows.rows.map((t, i) => (
                           <tr key={t.id} className="hover:bg-slate-50/60 transition-colors">
                             <td className="table-cell text-slate-400">{i + 1}</td>
                             <td className="table-cell font-medium text-slate-700 whitespace-nowrap">{formatDateShort(t.date)}</td>
@@ -298,7 +333,7 @@ export default function Reports() {
                           </tr>
                         ))}
                       </tbody>
-                      {mReport.transactions.length > 0 && (
+                      {mRows && mRows.total > 0 && (
                         <tfoot>
                           <tr className="bg-slate-50 border-t border-slate-200">
                             <td colSpan={4} className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Total</td>
@@ -308,12 +343,20 @@ export default function Reports() {
                       )}
                     </table>
                   </div>
+
+                  <Pagination
+                    page={mPage}
+                    pageSize={REPORT_PAGE_SIZE}
+                    total={mRows?.total || 0}
+                    loading={mLoading}
+                    onPageChange={loadMonthly}
+                  />
                 </div>
               </motion.div>
             )}
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </Page>
   )
 }

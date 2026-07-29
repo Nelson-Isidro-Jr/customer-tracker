@@ -97,6 +97,7 @@ function handle(channel, fn) {
 }
 
 // ─── IPC: Settings ────────────────────────────────────────────────────────────
+handle('app:getVersion', () => app.getVersion())
 handle('settings:get', () => readSettings())
 handle('settings:set', (_, data) => { writeSettings(data); return true })
 
@@ -115,6 +116,7 @@ handle('data:autoBackupNow', () => {
 
 // ─── IPC: Customers ───────────────────────────────────────────────────────────
 handle('customers:getAll',    ()               => db.getAllCustomers())
+handle('customers:getPage',   (_, opts)        => db.getCustomersPage(opts || {}))
 handle('customers:getAllLite',()               => db.getAllCustomersLite())
 handle('customers:getById',   (_, id)          => db.getCustomerById(id))
 handle('customers:add',       (_, data)        => db.addCustomer(data))
@@ -125,6 +127,8 @@ handle('customers:search',    (_, q)           => db.searchCustomers(q))
 // ─── IPC: Transactions ────────────────────────────────────────────────────────
 handle('transactions:getByCustomer', (_, cid)     => db.getTransactionsByCustomer(cid))
 handle('transactions:getAll',        (_, filters) => db.getAllTransactions(filters || {}))
+handle('transactions:getPage',       (_, opts)    => db.getTransactionsPage(opts || {}))
+handle('transactions:getRecent',     (_, limit)   => db.getRecentTransactions(limit || 10))
 handle('transactions:add',           (_, data)    => db.addTransaction(data))
 handle('transactions:update',        (_, { id, data }) => db.updateTransaction(id, data))
 handle('transactions:delete',        (_, id)      => db.deleteTransaction(id))
@@ -132,6 +136,22 @@ handle('transactions:delete',        (_, id)      => db.deleteTransaction(id))
 // ─── IPC: Activity Log ────────────────────────────────────────────────────────
 handle('activity:getPage', (_, opts) => db.getActivityPage(opts || {}))
 handle('activity:clear',   ()         => { db.clearActivityLog(); return true })
+
+// ─── IPC: Points & Rewards ────────────────────────────────────────────────────
+handle('points:getConfig', ()          => db.getPointsConfig())
+handle('points:setConfig', (_, cfg)    => db.setPointsConfig(cfg))
+handle('points:balances',  (_, opts)   => db.getPointsBalancesPage(opts || {}))
+handle('points:summary',   ()          => db.getPointsSummary())
+handle('points:customer',  (_, id)     => db.getCustomerPoints(id))
+
+handle('rewards:getAll', ()                  => db.getRewards())
+handle('rewards:add',    (_, data)           => db.addReward(data))
+handle('rewards:update', (_, { id, data })   => db.updateReward(id, data))
+handle('rewards:delete', (_, id)             => db.deleteReward(id))
+
+handle('redemptions:redeem',  (_, data) => db.redeemReward(data))
+handle('redemptions:getPage', (_, opts) => db.getRedemptionsPage(opts || {}))
+handle('redemptions:delete',  (_, id)   => db.deleteRedemption(id))
 
 // ─── IPC: Analytics ───────────────────────────────────────────────────────────
 handle('analytics:dashboard',        ()                          => db.getDashboardStats())
@@ -143,6 +163,8 @@ handle('analytics:topBuyers',        (_, { year, month, limit }) => db.getTopBuy
 // ─── IPC: Reports ─────────────────────────────────────────────────────────────
 handle('reports:daily',   (_, date)            => db.getDailyReport(date))
 handle('reports:monthly', (_, { year, month }) => db.getMonthlyReport(year, month))
+handle('reports:dailySummary',   (_, date)            => db.getDailyReportSummary(date))
+handle('reports:monthlySummary', (_, { year, month }) => db.getMonthlyReportSummary(year, month))
 
 // ─── IPC: Data Import / Export ────────────────────────────────────────────────
 handle('data:clearAll', () => db.clearAllData())

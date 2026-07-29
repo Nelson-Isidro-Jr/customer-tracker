@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Search, Plus, UserCheck, Crown, ChevronRight, Edit, Trash2, Mail, Phone } from 'lucide-react'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Pagination from '../components/Pagination'
 import { useToast } from '../context/ToastContext'
 import { formatPHP, formatDateShort } from '../utils/format'
+import { Page, Pop, PopGrid } from '../components/Cascade'
 
 function CustomerForm({ initial, onSubmit, onClose, loading }) {
   const [form, setForm] = useState(initial || { full_name: '', email: '', phone: '', notes: '' })
@@ -46,8 +48,12 @@ export default function Customers() {
   const { showToast } = useToast()
 
   const [customers, setCustomers] = useState([])
+  const [total, setTotal]         = useState(0)
+  const [page, setPage]           = useState(1)
+  const [pageSize, setPageSize]   = useState(50)
   const [loading, setLoading]     = useState(true)
   const [query, setQuery]         = useState('')
+  const [search, setSearch]       = useState('')
   const [addOpen, setAddOpen]     = useState(false)
   const [editTarget, setEditTarget] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -55,24 +61,30 @@ export default function Customers() {
 
   const reqIdRef = useRef(0)
 
+  // Debounce the search box, then page on the server — the old version pulled
+  // every customer (each with a GROUP BY over all their transactions) on every
+  // keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => { setSearch(query.trim()); setPage(1) }, 250)
+    return () => clearTimeout(t)
+  }, [query])
+
   const load = useCallback(async () => {
     const myReqId = ++reqIdRef.current
     setLoading(true)
     try {
-      const data = query.trim()
-        ? await window.electron.invoke('customers:search', query.trim())
-        : await window.electron.invoke('customers:getAll')
+      const res = await window.electron.invoke('customers:getPage', { page, pageSize, search })
       if (myReqId !== reqIdRef.current) return
-      setCustomers(data)
+      setCustomers(res.rows)
+      setTotal(res.total)
+    } catch (err) {
+      if (myReqId === reqIdRef.current) showToast(err?.message || 'Failed to load customers', 'error')
     } finally {
       if (myReqId === reqIdRef.current) setLoading(false)
     }
-  }, [query])
+  }, [page, pageSize, search, showToast])
 
-  useEffect(() => {
-    const t = setTimeout(load, 250)
-    return () => clearTimeout(t)
-  }, [load])
+  useEffect(() => { load() }, [load])
 
   async function handleAdd(form) {
     setSaving(true)
@@ -105,12 +117,13 @@ export default function Customers() {
     } catch (err) { showToast(err?.message || 'Failed to delete customer', 'error') }
   }
 
-  const topBuyer = customers[0]
+  // Only the first row of an unfiltered first page is genuinely the top buyer.
+  const topBuyer = (page === 1 && !search) ? customers[0] : null
 
   return (
-    <div className="page-container">
+    <Page>
       {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <Pop className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -123,16 +136,16 @@ export default function Customers() {
         <button onClick={() => setAddOpen(true)} className="btn-primary flex-shrink-0">
           <Plus size={16} /> Add Customer
         </button>
-      </div>
+      </Pop>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 gap-4">
+      <Pop className="grid grid-cols-2 gap-4">
         <div className="card p-4 flex items-center gap-4">
           <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
             <UserCheck size={20} className="text-blue-600" />
           </div>
           <div>
-            <div className="text-xl font-bold text-slate-900">{customers.length}</div>
+            <div className="text-xl font-bold text-slate-900">{total.toLocaleString('en-PH')}</div>
             <div className="text-xs text-slate-500">Total Customers</div>
           </div>
         </div>
@@ -147,13 +160,15 @@ export default function Customers() {
             </div>
           </div>
         )}
-      </div>
+      </Pop>
 
       {/* Table */}
-      <motion.div className="card overflow-hidden" layout>
-        <div className="overflow-x-auto">
+      <Pop
+        className="card overflow-hidden"
+      >
+        <div className="overflow-x-auto max-h-[calc(100vh-330px)] overflow-y-auto">
           <table className="w-full">
-            <thead>
+            <thead className="sticky top-0 bg-white z-10">
               <tr>
                 <th className="table-header">#</th>
                 <th className="table-header">Customer</th>
@@ -174,67 +189,71 @@ export default function Customers() {
                   </td>
                 </tr>
               ) : (
-                <AnimatePresence>
-                  {customers.map((c, i) => (
-                    <motion.tr
-                      key={c.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: i * 0.02 }}
-                      className="hover:bg-slate-50/70 transition-colors group"
-                    >
-                      <td className="table-cell text-slate-400 font-medium w-10">{i + 1}</td>
-                      <td className="table-cell">
-                        <div
-                          className="flex items-center gap-3 cursor-pointer"
-                          onClick={() => navigate(`/customers/${c.id}`)}
-                        >
-                          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                            i === 0 ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
-                          }`}>
-                            {c.full_name[0].toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors flex items-center gap-1.5">
-                              {c.full_name}
-                              {i === 0 && <Crown size={12} className="text-amber-500" />}
-                            </div>
+                customers.map((c, i) => (
+                  <tr
+                    key={c.id}
+                    className="hover:bg-slate-50/70 transition-colors group"
+                  >
+                    <td className="table-cell text-slate-400 font-medium w-10">{(page - 1) * pageSize + i + 1}</td>
+                    <td className="table-cell">
+                      <div
+                        className="flex items-center gap-3 cursor-pointer"
+                        onClick={() => navigate(`/customers/${c.id}`)}
+                      >
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                          i === 0 && topBuyer ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {c.full_name[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors flex items-center gap-1.5">
+                            {c.full_name}
+                            {i === 0 && topBuyer && <Crown size={12} className="text-amber-500" />}
                           </div>
                         </div>
-                      </td>
-                      <td className="table-cell text-slate-500">
-                        <div className="space-y-0.5">
-                          {c.email && <div className="flex items-center gap-1.5 text-xs"><Mail size={11} />{c.email}</div>}
-                          {c.phone && <div className="flex items-center gap-1.5 text-xs"><Phone size={11} />{c.phone}</div>}
-                          {!c.email && !c.phone && <span className="text-slate-300">—</span>}
-                        </div>
-                      </td>
-                      <td className="table-cell text-right font-bold text-slate-900">{formatPHP(c.total_purchases)}</td>
-                      <td className="table-cell text-center">
-                        <span className="badge bg-blue-50 text-blue-700">{c.transaction_count}</span>
-                      </td>
-                      <td className="table-cell text-slate-500">{formatDateShort(c.last_purchase)}</td>
-                      <td className="table-cell">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => navigate(`/customers/${c.id}`)} className="btn-ghost !px-2 !py-1.5" title="View">
-                            <ChevronRight size={15} />
-                          </button>
-                          <button onClick={() => setEditTarget(c)} className="btn-ghost !px-2 !py-1.5 hover:text-blue-600" title="Edit">
-                            <Edit size={15} />
-                          </button>
-                          <button onClick={() => setDeleteTarget(c)} className="btn-ghost !px-2 !py-1.5 hover:text-red-500" title="Delete">
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </td>
-                    </motion.tr>
-                  ))}
-                </AnimatePresence>
+                      </div>
+                    </td>
+                    <td className="table-cell text-slate-500">
+                      <div className="space-y-0.5">
+                        {c.email && <div className="flex items-center gap-1.5 text-xs"><Mail size={11} />{c.email}</div>}
+                        {c.phone && <div className="flex items-center gap-1.5 text-xs"><Phone size={11} />{c.phone}</div>}
+                        {!c.email && !c.phone && <span className="text-slate-300">—</span>}
+                      </div>
+                    </td>
+                    <td className="table-cell text-right font-bold text-slate-900">{formatPHP(c.total_purchases)}</td>
+                    <td className="table-cell text-center">
+                      <span className="badge bg-blue-50 text-blue-700">{c.transaction_count}</span>
+                    </td>
+                    <td className="table-cell text-slate-500">{formatDateShort(c.last_purchase)}</td>
+                    <td className="table-cell">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => navigate(`/customers/${c.id}`)} className="btn-ghost !px-2 !py-1.5" title="View">
+                          <ChevronRight size={15} />
+                        </button>
+                        <button onClick={() => setEditTarget(c)} className="btn-ghost !px-2 !py-1.5 hover:text-blue-600" title="Edit">
+                          <Edit size={15} />
+                        </button>
+                        <button onClick={() => setDeleteTarget(c)} className="btn-ghost !px-2 !py-1.5 hover:text-red-500" title="Delete">
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
-      </motion.div>
+
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          loading={loading}
+          onPageChange={setPage}
+          onPageSizeChange={(n) => { setPageSize(n); setPage(1) }}
+        />
+      </Pop>
 
       {/* Modals */}
       {addOpen && (
@@ -255,6 +274,6 @@ export default function Customers() {
           onCancel={() => setDeleteTarget(null)}
         />
       )}
-    </div>
+    </Page>
   )
 }

@@ -1,15 +1,16 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { motion } from 'framer-motion'
 import {
   LayoutDashboard, Users, Receipt, BarChart2,
-  Database, ChevronRight, TrendingUp, Settings, History
+  Database, ChevronRight, TrendingUp, Settings, History, Award
 } from 'lucide-react'
 import { useSettings } from '../context/SettingsContext'
+import WelcomeOverlay from './WelcomeOverlay'
 
 const NAV = [
   { to: '/',             label: 'Dashboard',    icon: LayoutDashboard, end: true },
   { to: '/customers',    label: 'Customers',    icon: Users },
   { to: '/transactions', label: 'Transactions', icon: Receipt },
+  { to: '/rewards',      label: 'Rewards',      icon: Award },
   { to: '/history',      label: 'History',      icon: History },
   { to: '/reports',      label: 'Reports',      icon: BarChart2 },
   { to: '/data',         label: 'Import / Export', icon: Database },
@@ -85,8 +86,10 @@ function Sidebar() {
         </NavLink>
 
         <div className="flex items-center gap-3 px-3 py-2.5">
-          <div className="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center flex-shrink-0">
-            <span className="text-blue-400 text-xs font-bold">{initials}</span>
+          <div className="w-8 h-8 rounded-full bg-blue-600/20 overflow-hidden flex items-center justify-center flex-shrink-0">
+            {settings?.avatar
+              ? <img src={settings.avatar} alt="" className="w-full h-full object-cover" />
+              : <span className="text-blue-400 text-xs font-bold">{initials}</span>}
           </div>
           <div className="min-w-0">
             <div className="text-white text-xs font-semibold truncate">{name}</div>
@@ -101,6 +104,7 @@ const PAGE_TITLES = {
   '/': 'Dashboard',
   '/customers': 'Customers',
   '/transactions': 'Transactions',
+  '/rewards': 'Points & Rewards',
   '/history': 'Activity History',
   '/reports': 'Reports',
   '/data': 'Import / Export',
@@ -115,29 +119,34 @@ export default function Layout({ children }) {
 
   return (
     <div className="flex h-screen bg-[#F1F5F9] overflow-hidden">
+      <WelcomeOverlay />
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="bg-white border-b border-slate-200 px-6 py-3.5 flex-shrink-0">
-          <div className="flex items-center gap-2 text-slate-400">
-            <span className="text-xs font-medium">{settings?.userName || 'Nelson Isidro'}</span>
-            <ChevronRight size={12} />
-            <span className="text-xs font-semibold text-slate-700">{title}</span>
+        <header className="bg-white border-b border-slate-200 px-6 py-3.5 flex-shrink-0 flex items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-slate-400">
+              <span className="text-xs font-medium">{settings?.userName || 'Nelson Isidro'}</span>
+              <ChevronRight size={12} />
+              <span className="text-xs font-semibold text-slate-700">{title}</span>
+            </div>
+            <h1 className="text-lg font-bold text-slate-900 mt-0.5">{title}</h1>
           </div>
-          <h1 className="text-lg font-bold text-slate-900 mt-0.5">{title}</h1>
+          {settings?.avatar && (
+            <img
+              src={settings.avatar}
+              alt=""
+              className="w-9 h-9 rounded-full object-cover ring-2 ring-slate-100 flex-shrink-0"
+            />
+          )}
         </header>
 
         {/* Content */}
+        {/* Keyed on the route so the page remounts and re-runs its cascade */}
         <main className="flex-1 overflow-hidden">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.22 }}
-            className="h-full"
-          >
+          <div key={location.pathname} className="h-full">
             {children}
-          </motion.div>
+          </div>
         </main>
       </div>
     </div>
