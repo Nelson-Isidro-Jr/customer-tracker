@@ -1,0 +1,71 @@
+name: Release Windows Installer
+
+# Builds the Windows installer on a real Windows machine and publishes it to
+# GitHub Releases. Runs when a version tag is pushed (git tag v1.3.0 &&
+# git push origin v1.3.0) or manually from the Actions tab.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare report settings
+        shell: bash
+        run: |
+          if [ ! -f .env ]; then cp .env.example .env; fi
+
+      - name: Build app
+        run: npm run build
+
+      - name: Build installer
+        run: npx electron-builder --win --x64 --publish never
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          # A fixed file name keeps .../releases/latest/download/Customer-Tracker-Setup.exe
+          # pointing at the newest installer
+          cp "dist-installer/Customer Tracker Setup $VERSION.exe" dist-installer/Customer-Tracker-Setup.exe
+
+          cat > notes.md <<EOF
+          ## Customer Tracker $VERSION
+
+          **Download:** Customer-Tracker-Setup.exe below.
+
+          **How to install**
+          1. Download **Customer-Tracker-Setup.exe**.
+          2. Double-click it. If Windows shows a blue "Windows protected your PC" screen, click **More info** and then **Run anyway**.
+          3. Follow the setup screens, click **Install**, and wait for it to finish.
+
+          Already have an older version? Just run this installer. It updates the app and keeps all your customers and transactions.
+          EOF
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist-installer/Customer-Tracker-Setup.exe --clobber
+          else
+            gh release create "$TAG" dist-installer/Customer-Tracker-Setup.exe \
+              --title "Customer Tracker $VERSION" \
+              --notes-file notes.md \
+              --target "$GITHUB_SHA"
+          fi
