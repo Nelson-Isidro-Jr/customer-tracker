@@ -10,38 +10,57 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow: hidden;
+    background: rgb(var(--c-page));
+    color: rgb(var(--t-gray-900));
   }
 
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  /* Slim, rounded, theme-colored scrollbars with a padded thumb */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 999px; }
-  ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+  ::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--c-gray-300) / 0.9);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-color: rgb(var(--c-gray-400)); }
+  ::-webkit-scrollbar-corner { background: transparent; }
+
+  ::selection { background: rgb(var(--c-brand-500) / 0.25); }
+
+  input[type='date']::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; }
+  input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+  input[type='number']::-webkit-inner-spin-button { opacity: 0.4; }
 }
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-150 select-none cursor-pointer;
+    @apply inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-150 select-none cursor-pointer shadow-sm shadow-blue-600/20 disabled:opacity-60 disabled:cursor-not-allowed;
   }
   .btn-secondary {
-    @apply inline-flex items-center gap-2 border border-slate-200 hover:bg-slate-50 active:bg-slate-100 text-slate-700 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-150 select-none cursor-pointer;
+    @apply inline-flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 active:bg-slate-100 text-slate-700 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-150 select-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed;
   }
   .btn-danger {
-    @apply inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-150 select-none cursor-pointer;
+    @apply inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-150 select-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed;
   }
   .btn-ghost {
-    @apply inline-flex items-center gap-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 px-3 py-2 rounded-lg text-sm transition-all duration-150 select-none cursor-pointer;
+    @apply inline-flex items-center gap-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 px-3 py-2 rounded-lg text-sm transition-all duration-150 select-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .input-field {
-    @apply w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-slate-800 placeholder:text-slate-400 transition-shadow;
+    @apply w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/60 focus:border-blue-400 text-sm text-slate-800 placeholder:text-slate-400 transition-all hover:border-slate-300;
+  }
+  .field-label {
+    @apply block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5;
   }
   .card {
     @apply bg-white rounded-2xl shadow-sm border border-slate-100;
   }
   .page-container {
     @apply h-full overflow-y-auto p-6 space-y-6;
+    scrollbar-gutter: stable;
   }
   .table-header {
-    @apply text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-5 py-3 bg-slate-50;
+    @apply text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-5 py-3 bg-slate-50 whitespace-nowrap;
   }
   .table-cell {
     @apply px-5 py-3.5 text-sm text-slate-700;
@@ -49,4 +68,23 @@
   .badge {
     @apply inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full;
   }
+  .skeleton {
+    @apply rounded-lg bg-slate-100;
+    background-image: linear-gradient(90deg, transparent 0, rgb(var(--c-gray-50) / 0.9) 50%, transparent 100%);
+    background-size: 400px 100%;
+    background-repeat: no-repeat;
+    animation: shimmer 1.6s linear infinite;
+  }
+}
+
+/* Smooth color crossfade while a theme is being applied */
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease, fill 0.35s ease, stroke 0.35s ease !important;
+}
+
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
 }
