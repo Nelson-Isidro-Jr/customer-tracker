@@ -6,21 +6,35 @@ import {
   ChevronLeft, ChevronRight, ChevronsUpDown, LayoutDashboard, UserRound,
   FileDown, Loader2, Check, Search, ExternalLink, FileText, X,
   TrendingUp, TrendingDown, Minus, DollarSign, Receipt, Users, BarChart3,
-  Trophy, Crown, CalendarDays, Hash, Percent, ArrowUpRight
+  Trophy, Crown, CalendarDays, Hash, Percent, ArrowUpRight, Repeat
 } from 'lucide-react'
 import {
   BarChart, Bar, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts'
 import { useToast } from '../context/ToastContext'
+import { useTheme } from '../context/SettingsContext'
 import AnimatedNumber from '../components/AnimatedNumber'
 import {
   formatPHP, formatNumber, formatDate, formatDateShort, formatCompactPHP, formatPct,
   MONTH_NAMES, MONTH_SHORT
 } from '../utils/format'
 
-// Same series colors as the PDF so the screen and the printout read alike
-const C = { current: '#2563EB', previous: '#86B6EF', decline: '#E34948', grid: '#EEF2F6', tick: '#94A3B8' }
+// Series colors follow the active theme; the PDF keeps its own print palette
+function useC() {
+  const { colors } = useTheme()
+  return {
+    current: colors.current,
+    previous: colors.previous,
+    decline: colors.decline,
+    grid: colors.grid,
+    tick: colors.tick,
+    cursor: colors.cursor,
+    surface: colors.surface,
+    ink: colors.ink,
+    axis: { fontSize: 11, fill: colors.tick }
+  }
+}
 const GROWTH_CAP = 300
 const EASE = [0.16, 1, 0.3, 1]
 
@@ -30,7 +44,6 @@ const RISE = {
   animate: { opacity: 1, y: 0, transition: { duration: 0.45, ease: EASE } }
 }
 
-const AXIS = { fontSize: 11, fill: C.tick }
 
 // ─── Small building blocks ────────────────────────────────────────────────────
 
@@ -42,7 +55,7 @@ function DeltaPill({ value, versus, inverse = false }) {
   const up = value > 0
   const Icon = flat ? Minus : up ? TrendingUp : TrendingDown
   const tone = inverse
-    ? 'bg-white/15 text-white'
+    ? 'bg-glass/15 text-white'
     : flat ? 'bg-slate-100 text-slate-500' : up ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
   return (
     <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${tone}`}>
@@ -60,10 +73,10 @@ function KpiCard({ label, value, format, icon: Icon, iconBg, footer, primary = f
         whileHover={{ y: -3 }}
         className="relative overflow-hidden rounded-2xl p-5 text-white bg-gradient-to-br from-blue-600 to-indigo-700 shadow-lg shadow-blue-600/20"
       >
-        <div className="absolute -right-10 -top-10 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute -right-10 -top-10 w-36 h-36 rounded-full bg-glass/10 blur-2xl" />
         <div className="relative flex items-center justify-between mb-4">
           <span className="text-xs font-semibold uppercase tracking-wider text-blue-100">{label}</span>
-          <div className="w-9 h-9 bg-white/15 rounded-xl flex items-center justify-center">
+          <div className="w-9 h-9 bg-glass/15 rounded-xl flex items-center justify-center">
             <Icon size={17} />
           </div>
         </div>
@@ -145,6 +158,7 @@ function Avatar({ name, size = 'md' }) {
 }
 
 function ChartTooltip({ active, payload, year, mode }) {
+  const C = useC()
   if (!active || !payload?.length) return null
   const d = payload[0].payload
   return (
@@ -188,6 +202,7 @@ function TooltipRow({ color, label, value }) {
 // Bar with a rounded data end that works for negative values too, and a break
 // mark when a growth spike is clipped at GROWTH_CAP.
 function GrowthBar({ x, y, width, height, payload }) {
+  const C = useC()
   if (!height || payload.growth == null) return null
   const top = Math.min(y, y + height)
   const h = Math.abs(height)
@@ -202,8 +217,8 @@ function GrowthBar({ x, y, width, height, payload }) {
       <path d={d} fill={neg ? C.decline : C.current} />
       {clipped && (
         <>
-          <path d={`M${x - 1},${top + 12}L${x + width + 1},${top + 7}M${x - 1},${top + 16}L${x + width + 1},${top + 11}`} stroke="#fff" strokeWidth={2} />
-          <text x={x + width / 2} y={top - 6} textAnchor="middle" fontSize={10} fontWeight={700} fill="#334155">
+          <path d={`M${x - 1},${top + 12}L${x + width + 1},${top + 7}M${x - 1},${top + 16}L${x + width + 1},${top + 11}`} stroke={C.surface} strokeWidth={2} />
+          <text x={x + width / 2} y={top - 6} textAnchor="middle" fontSize={10} fontWeight={700} fill={C.ink}>
             {formatPct(payload.growth, 0)}
           </text>
         </>
@@ -230,13 +245,14 @@ function toChartData(monthly) {
 // ─── Charts ───────────────────────────────────────────────────────────────────
 
 function MonthlyChart({ data, year, height = 240 }) {
+  const C = useC()
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} barGap={2} barCategoryGap="26%" margin={{ left: -6, right: 4, top: 8 }}>
         <CartesianGrid stroke={C.grid} vertical={false} />
-        <XAxis dataKey="name" tick={AXIS} axisLine={false} tickLine={false} />
-        <YAxis tick={AXIS} axisLine={false} tickLine={false} tickFormatter={formatCompactPHP} width={56} />
-        <Tooltip content={<ChartTooltip year={year} mode="monthly" />} cursor={{ fill: '#F1F5F9', radius: 8 }} />
+        <XAxis dataKey="name" tick={C.axis} axisLine={false} tickLine={false} />
+        <YAxis tick={C.axis} axisLine={false} tickLine={false} tickFormatter={formatCompactPHP} width={68} />
+        <Tooltip content={<ChartTooltip year={year} mode="monthly" />} cursor={{ fill: C.cursor, radius: 8 }} />
         <Bar dataKey="prev" fill={C.previous} radius={[4, 4, 0, 0]} maxBarSize={16} animationDuration={700} />
         <Bar dataKey="total" fill={C.current} radius={[4, 4, 0, 0]} maxBarSize={16} animationDuration={900} animationBegin={150} />
       </BarChart>
@@ -245,6 +261,7 @@ function MonthlyChart({ data, year, height = 240 }) {
 }
 
 function GrowthChart({ data, year, height = 220 }) {
+  const C = useC()
   if (!data.some(d => d.growth != null)) {
     return <EmptyChart height={height} text="Not enough monthly history to measure growth yet" />
   }
@@ -252,10 +269,10 @@ function GrowthChart({ data, year, height = 220 }) {
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ left: -6, right: 4, top: 18 }}>
         <CartesianGrid stroke={C.grid} vertical={false} />
-        <XAxis dataKey="name" tick={AXIS} axisLine={false} tickLine={false} />
-        <YAxis tick={AXIS} axisLine={false} tickLine={false} width={56} tickFormatter={v => formatPct(v, 0)} />
-        <ReferenceLine y={0} stroke="#CBD5E1" />
-        <Tooltip content={<ChartTooltip year={year} mode="growth" />} cursor={{ fill: '#F1F5F9', radius: 8 }} />
+        <XAxis dataKey="name" tick={C.axis} axisLine={false} tickLine={false} />
+        <YAxis tick={C.axis} axisLine={false} tickLine={false} width={68} tickFormatter={v => formatPct(v, 0)} />
+        <ReferenceLine y={0} stroke={C.tick} strokeOpacity={0.5} />
+        <Tooltip content={<ChartTooltip year={year} mode="growth" />} cursor={{ fill: C.cursor, radius: 8 }} />
         <Bar dataKey="growthDisplay" shape={<GrowthBar />} maxBarSize={20} animationDuration={800} />
       </BarChart>
     </ResponsiveContainer>
@@ -263,20 +280,21 @@ function GrowthChart({ data, year, height = 220 }) {
 }
 
 function CumulativeChart({ data, year, height = 220 }) {
+  const C = useC()
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={data} margin={{ left: -6, right: 12, top: 8 }}>
         <CartesianGrid stroke={C.grid} vertical={false} />
-        <XAxis dataKey="name" tick={AXIS} axisLine={false} tickLine={false} />
-        <YAxis tick={AXIS} axisLine={false} tickLine={false} tickFormatter={formatCompactPHP} width={56} />
-        <Tooltip content={<ChartTooltip year={year} mode="cumulative" />} cursor={{ stroke: '#CBD5E1', strokeWidth: 1 }} />
+        <XAxis dataKey="name" tick={C.axis} axisLine={false} tickLine={false} />
+        <YAxis tick={C.axis} axisLine={false} tickLine={false} tickFormatter={formatCompactPHP} width={68} />
+        <Tooltip content={<ChartTooltip year={year} mode="cumulative" />} cursor={{ stroke: C.tick, strokeOpacity: 0.5, strokeWidth: 1 }} />
         <Line
           dataKey="prevCumulative" stroke={C.previous} strokeWidth={2} dot={false}
-          activeDot={{ r: 4, stroke: '#fff', strokeWidth: 2 }} animationDuration={900}
+          activeDot={{ r: 4, stroke: C.surface, strokeWidth: 2 }} animationDuration={900}
         />
         <Area
           dataKey="cumulative" stroke={C.current} strokeWidth={2} fill={C.current} fillOpacity={0.1}
-          dot={false} activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} connectNulls={false} animationDuration={1100}
+          dot={false} activeDot={{ r: 5, stroke: C.surface, strokeWidth: 2 }} connectNulls={false} animationDuration={1100}
         />
       </ComposedChart>
     </ResponsiveContainer>
@@ -348,10 +366,13 @@ function MonthlyTable({ monthly, year, amountLabel }) {
 // ─── Overview tab ─────────────────────────────────────────────────────────────
 
 function Overview({ report, onPickBuyer }) {
+  const C = useC()
   const navigate = useNavigate()
   const { year, totals, comparison, monthly, bestMonth, topBuyers, topTransactions } = report
+  const frequentBuyers = report.frequentBuyers || []
   const data = useMemo(() => toChartData(monthly), [monthly])
   const maxShare = Math.max(1, ...topBuyers.map(b => b.share))
+  const maxVisits = Math.max(1, ...frequentBuyers.map(b => b.transaction_count))
 
   return (
     <motion.div variants={STAGGER} initial="initial" animate="animate" className="space-y-5">
@@ -374,7 +395,7 @@ function Overview({ report, onPickBuyer }) {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {[
           {
             icon: CalendarDays, tone: 'text-blue-600 bg-blue-50', label: 'Best month',
@@ -386,6 +407,12 @@ function Overview({ report, onPickBuyer }) {
             value: topBuyers[0]?.full_name || '—',
             sub: topBuyers[0] ? `${formatPHP(topBuyers[0].total_amount)} · ${topBuyers[0].share.toFixed(1)}% of revenue` : 'No buyers yet',
             onClick: topBuyers[0] ? () => onPickBuyer(topBuyers[0].id) : null
+          },
+          {
+            icon: Repeat, tone: 'text-violet-600 bg-violet-50', label: 'Most frequent buyer',
+            value: frequentBuyers[0]?.full_name || '—',
+            sub: frequentBuyers[0] ? `${formatNumber(frequentBuyers[0].transaction_count)} transactions · ${formatPHP(frequentBuyers[0].total_amount)}` : 'No buyers yet',
+            onClick: frequentBuyers[0] ? () => onPickBuyer(frequentBuyers[0].id) : null
           },
           {
             icon: ArrowUpRight, tone: 'text-emerald-600 bg-emerald-50', label: 'Largest sale',
@@ -510,6 +537,46 @@ function Overview({ report, onPickBuyer }) {
           )}
         </Panel>
       </div>
+
+      <Panel title={`Most frequent buyers of ${year}`} subtitle="Ranked by number of transactions — click one to open their yearly audit">
+        {frequentBuyers.length === 0 ? (
+          <div className="text-slate-400 text-sm text-center py-10">No buyers this year</div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-1">
+            {frequentBuyers.map((b, i) => (
+              <motion.button
+                key={b.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.035, duration: 0.4, ease: EASE }}
+                onClick={() => onPickBuyer(b.id)}
+                className="w-full flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-slate-50 transition-colors text-left group"
+              >
+                <RankBadge rank={i + 1} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium text-slate-800 truncate group-hover:text-blue-600 transition-colors">{b.full_name}</span>
+                    <span className="text-sm font-bold text-slate-900 flex-shrink-0 tabular-nums">{formatNumber(b.transaction_count)} <span className="text-xs font-medium text-slate-400">txns</span></span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <div className="flex-1 h-1.5 rounded-full bg-violet-100 overflow-hidden">
+                      <motion.div
+                        className="h-full rounded-full bg-violet-500"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(b.transaction_count / maxVisits) * 100}%` }}
+                        transition={{ delay: 0.15 + i * 0.05, duration: 0.8, ease: EASE }}
+                      />
+                    </div>
+                    <span className="text-[11px] text-slate-400 text-right flex-shrink-0 whitespace-nowrap">
+                      {b.share.toFixed(1)}% of txns · avg {formatPHP(b.average)}
+                    </span>
+                  </div>
+                </div>
+              </motion.button>
+            ))}
+          </div>
+        )}
+      </Panel>
 
       <motion.div variants={RISE} className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100">
@@ -639,6 +706,7 @@ function BuyerPicker({ buyers, value, onChange }) {
 // ─── Buyer audit tab ──────────────────────────────────────────────────────────
 
 function BuyerAudit({ statement }) {
+  const C = useC()
   const navigate = useNavigate()
   const { year, customer, transactions, monthly, comparison, audit } = statement
   const data = useMemo(() => toChartData(monthly), [monthly])

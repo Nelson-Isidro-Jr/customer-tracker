@@ -190,6 +190,8 @@ function documentShell(title, body) {
 
 export function buildYearlyReportHtml(report, { brand, preparedBy, generatedAt = new Date() }) {
   const { year, totals, comparison, monthly, bestMonth, topBuyers, topTransactions } = report
+  const frequentBuyers = report.frequentBuyers || []
+  const frequent = frequentBuyers[0]
   const hasSales = totals.count > 0
   const topBuyer = topBuyers[0]
   const largest = topTransactions[0]
@@ -225,6 +227,11 @@ export function buildYearlyReportHtml(report, { brand, preparedBy, generatedAt =
         <div class="hl-label">Top buyer</div>
         <div class="hl-value">${topBuyer ? esc(topBuyer.full_name) : '—'}</div>
         <div class="hl-sub">${topBuyer ? `${php(topBuyer.total_amount)} · ${topBuyer.share.toFixed(1)}% of revenue` : 'No buyers yet'}</div>
+      </div>
+      <div class="highlight">
+        <div class="hl-label">Most frequent buyer</div>
+        <div class="hl-value">${frequent ? esc(frequent.full_name) : '—'}</div>
+        <div class="hl-sub">${frequent ? `${num(frequent.transaction_count)} transactions · ${php(frequent.total_amount)}` : 'No buyers yet'}</div>
       </div>
       <div class="highlight">
         <div class="hl-label">Largest sale</div>
@@ -293,9 +300,47 @@ export function buildYearlyReportHtml(report, { brand, preparedBy, generatedAt =
       </div>
     </section>`
 
+  const maxVisits = Math.max(1, ...frequentBuyers.map(b => b.transaction_count))
+  const frequentSection = `
+    <section>
+      ${sectionHead(6, 'Most frequent buyers', `Ranked by number of transactions in ${year}`)}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:34px">Rank</th>
+              <th>Customer</th>
+              <th class="num">Transactions</th>
+              <th class="num">Active months</th>
+              <th class="num">Avg per visit</th>
+              <th class="num">Total</th>
+              <th style="width:120px">Share of transactions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${frequentBuyers.length ? frequentBuyers.map((b, i) => `
+              <tr>
+                <td>${rankBadge(i + 1)}</td>
+                <td><div class="strong">${esc(b.full_name)}</div>${b.email || b.phone ? `<div class="sub">${esc(b.email || b.phone)}</div>` : ''}</td>
+                <td class="num strong">${num(b.transaction_count)}</td>
+                <td class="num">${num(b.active_months)} of 12</td>
+                <td class="num">${php(b.average)}</td>
+                <td class="num">${php(b.total_amount)}</td>
+                <td>
+                  <div class="share">
+                    <div class="share-track violet"><div class="share-fill violet" style="width:${Math.max(1.5, (b.transaction_count / maxVisits) * 100).toFixed(2)}%"></div></div>
+                    <span>${b.share.toFixed(1)}%</span>
+                  </div>
+                </td>
+              </tr>`).join('') : '<tr><td colspan="7" class="empty-row">No buyers recorded this year.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </section>`
+
   const txns = `
     <section>
-      ${sectionHead(6, 'Top transactions', `Largest single sales in ${year}`)}
+      ${sectionHead(7, 'Top transactions', `Largest single sales in ${year}`)}
       <div class="table-wrap">
         <table>
           <thead>
@@ -328,7 +373,7 @@ export function buildYearlyReportHtml(report, { brand, preparedBy, generatedAt =
         ${comparisonNote(comparison)}</div>
     </div>`
 
-  return documentShell(`Annual Sales Report ${year}`, head + kpis + highlights + charts + breakdown + buyers + txns + closing)
+  return documentShell(`Annual Sales Report ${year}`, head + kpis + highlights + charts + breakdown + buyers + frequentSection + txns + closing)
 }
 
 // ─── Customer statement & yearly audit ────────────────────────────────────────
@@ -535,7 +580,7 @@ body {
 .kpi.primary .delta { color: #FFFFFF; background: rgba(255,255,255,0.16); padding: 2px 7px; border-radius: 999px; }
 .kpi.primary .delta.neutral { color: #DBEAFE; }
 
-.highlights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-top: 9px; break-inside: avoid; }
+.highlights { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 9px; break-inside: avoid; }
 .highlight { border-radius: 12px; padding: 10px 13px; background: #F8FAFC; border: 1px solid #EEF2F6; min-width: 0; }
 .hl-label { font-size: 7.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #64748B; }
 .hl-value { font-size: 12.5px; font-weight: 700; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -602,6 +647,8 @@ tr.subtotal td { background: #F8FAFC; font-weight: 600; color: #334155; font-siz
 .share { display: flex; align-items: center; gap: 7px; }
 .share-track { flex: 1; height: 5px; border-radius: 999px; background: #DBEAFE; overflow: hidden; }
 .share-fill { height: 100%; border-radius: 999px; background: #2563EB; }
+.share-track.violet { background: #EDE9FE; }
+.share-fill.violet { background: #7C3AED; }
 .share span { font-size: 8.5px; font-weight: 600; color: #475569; width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
 
 .audit-grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; }
