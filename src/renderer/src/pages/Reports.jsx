@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import Select from '../components/Select'
+import Pagination from '../components/Pagination'
+import { useTheme } from '../context/SettingsContext'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Calendar, BarChart3, Download, Trophy, Receipt, DollarSign, RefreshCw
@@ -7,13 +10,17 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts'
 import { useToast } from '../context/ToastContext'
-import { formatPHP, formatDate, formatDateShort, MONTH_NAMES, toDateInput } from '../utils/format'
+import { formatPHP, formatDate, formatDateShort, formatCompactPHP, MONTH_NAMES, toDateInput } from '../utils/format'
+
+const ROWS_PER_PAGE = 50
 
 const now = new Date()
 
 export default function Reports() {
   const { showToast } = useToast()
+  const { colors } = useTheme()
   const [tab, setTab] = useState('daily')
+  const [mPage, setMPage] = useState(1)
 
   // Daily state
   const [dailyDate, setDailyDate]     = useState(toDateInput())
@@ -40,6 +47,7 @@ export default function Reports() {
     try {
       const r = await window.electron.invoke('reports:monthly', { year: mYear, month: mMonth })
       setMReport(r)
+      setMPage(1)
     } catch { showToast('Failed to load report', 'error') }
     finally { setMLoading(false) }
   }
@@ -75,13 +83,12 @@ export default function Reports() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-              tab === key
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
+            className={`relative px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              tab === key ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            <Icon size={15} /> {label}
+            {tab === key && <motion.span layoutId="reports-tab" className="absolute inset-0 bg-white rounded-lg shadow-sm" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />}
+            <span className="relative flex items-center gap-2"><Icon size={15} /> {label}</span>
           </button>
         ))}
       </div>
@@ -196,17 +203,11 @@ export default function Reports() {
               <div className="flex items-end gap-3 flex-wrap">
                 <div className="flex-1 min-w-[140px]">
                   <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Month</label>
-                  <select className="input-field" value={mMonth} onChange={e => setMMonth(parseInt(e.target.value))}>
-                    {MONTH_NAMES.map((m, i) => (
-                      <option key={i} value={i + 1}>{m}</option>
-                    ))}
-                  </select>
+                  <Select value={mMonth} onChange={setMMonth} options={MONTH_NAMES.map((m, i) => ({ value: i + 1, label: m }))} ariaLabel="Month" />
                 </div>
                 <div className="flex-1 min-w-[120px]">
                   <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Year</label>
-                  <select className="input-field" value={mYear} onChange={e => setMYear(parseInt(e.target.value))}>
-                    {years.map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
+                  <Select value={mYear} onChange={setMYear} options={years.map(y => ({ value: y, label: String(y) }))} ariaLabel="Year" />
                 </div>
                 <button onClick={loadMonthly} disabled={mLoading} className="btn-primary">
                   {mLoading ? <RefreshCw size={15} className="animate-spin" /> : <BarChart3 size={15} />}
@@ -248,17 +249,18 @@ export default function Reports() {
                     </h3>
                     <ResponsiveContainer width="100%" height={180}>
                       <BarChart data={mReport.dailyBreakdown} barSize={20} margin={{ left: -10 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false}
+                        <CartesianGrid stroke={colors.grid} vertical={false} />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: colors.tick }} axisLine={false} tickLine={false}
                           tickFormatter={d => d.slice(8)} />
-                        <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false}
-                          tickFormatter={v => v >= 1000 ? `₱${(v/1000).toFixed(0)}k` : `₱${v}`} />
+                        <YAxis tick={{ fontSize: 10, fill: colors.tick }} axisLine={false} tickLine={false} width={68}
+                          tickFormatter={formatCompactPHP} />
                         <Tooltip
                           formatter={(v) => [formatPHP(v), 'Revenue']}
-                          contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: 12 }}
-                          cursor={{ fill: '#EFF6FF', radius: 4 }}
+                          labelFormatter={d => formatDate(d)}
+                          contentStyle={{ borderRadius: '12px', border: '1px solid rgb(var(--c-gray-200))', background: 'rgb(var(--c-surface))', color: 'rgb(var(--t-gray-800))', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontSize: 12 }}
+                          cursor={{ fill: colors.cursor, radius: 4 }}
                         />
-                        <Bar dataKey="total" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="total" fill={colors.current} radius={[4, 4, 0, 0]} maxBarSize={20} animationDuration={800} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -288,9 +290,9 @@ export default function Reports() {
                       <tbody className="divide-y divide-slate-50">
                         {mReport.transactions.length === 0 ? (
                           <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-400 text-sm">No transactions this month.</td></tr>
-                        ) : mReport.transactions.map((t, i) => (
-                          <tr key={t.id} className="hover:bg-slate-50/60 transition-colors">
-                            <td className="table-cell text-slate-400">{i + 1}</td>
+                        ) : mReport.transactions.slice((mPage - 1) * ROWS_PER_PAGE, mPage * ROWS_PER_PAGE).map((t, i) => (
+                          <tr key={t.id} className="hover:bg-slate-50/60 transition-colors animate-row-in" style={{ animationDelay: `${Math.min(i, 14) * 18}ms` }}>
+                            <td className="table-cell text-slate-400 tabular-nums">{(mPage - 1) * ROWS_PER_PAGE + i + 1}</td>
                             <td className="table-cell font-medium text-slate-700 whitespace-nowrap">{formatDateShort(t.date)}</td>
                             <td className="table-cell font-medium text-slate-800">{t.customer_name}</td>
                             <td className="table-cell text-slate-500">{t.description || '—'}</td>
@@ -308,6 +310,16 @@ export default function Reports() {
                       )}
                     </table>
                   </div>
+                  {mReport.transactions.length > ROWS_PER_PAGE && (
+                    <Pagination
+                      page={mPage}
+                      pageSize={ROWS_PER_PAGE}
+                      total={mReport.transactions.length}
+                      onPageChange={setMPage}
+                      label="transactions"
+                      layoutId="monthly-page"
+                    />
+                  )}
                 </div>
               </motion.div>
             )}

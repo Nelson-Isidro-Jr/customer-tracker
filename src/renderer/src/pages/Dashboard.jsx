@@ -8,7 +8,10 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer
 } from 'recharts'
-import { formatPHP, formatDateShort, MONTH_SHORT } from '../utils/format'
+import { formatPHP, formatNumber, formatDateShort, formatCompactPHP, MONTH_SHORT } from '../utils/format'
+import { useTheme } from '../context/SettingsContext'
+import AnimatedNumber from '../components/AnimatedNumber'
+import Avatar from '../components/Avatar'
 
 const FADE_UP = (delay = 0) => ({
   initial: { opacity: 0, y: 18 },
@@ -16,16 +19,18 @@ const FADE_UP = (delay = 0) => ({
   transition: { delay, duration: 0.35 }
 })
 
-function StatCard({ title, value, sub, icon: Icon, iconBg, delay }) {
+function StatCard({ title, value, format, sub, icon: Icon, iconBg, delay }) {
   return (
-    <motion.div {...FADE_UP(delay)} className="card p-5">
+    <motion.div {...FADE_UP(delay)} whileHover={{ y: -3 }} className="card p-5 transition-shadow hover:shadow-md">
       <div className="flex items-center justify-between mb-4">
         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{title}</span>
         <div className={`w-9 h-9 ${iconBg} rounded-xl flex items-center justify-center`}>
           <Icon size={17} className="text-white" />
         </div>
       </div>
-      <div className="text-2xl font-bold text-slate-900 tracking-tight">{value}</div>
+      <div className={`${String(format ? format(value || 0) : value).length > 13 ? 'text-xl' : 'text-2xl'} font-bold text-slate-900 tracking-tight truncate`}>
+        <AnimatedNumber value={value || 0} format={format} />
+      </div>
       {sub && <div className="text-xs text-slate-400 mt-1">{sub}</div>}
     </motion.div>
   )
@@ -33,19 +38,20 @@ function StatCard({ title, value, sub, icon: Icon, iconBg, delay }) {
 
 function BestBuyerCard({ label, buyer, gradient, delay }) {
   return (
-    <motion.div {...FADE_UP(delay)} className={`rounded-2xl p-5 text-white ${gradient}`}>
-      <div className="flex items-center gap-2 mb-3 opacity-80">
+    <motion.div {...FADE_UP(delay)} whileHover={{ y: -3 }} className={`relative overflow-hidden rounded-2xl p-5 text-white shadow-lg ${gradient}`}>
+      <div className="absolute -right-10 -top-10 w-36 h-36 rounded-full bg-glass/10 blur-2xl" />
+      <div className="relative flex items-center gap-2 mb-3 opacity-80">
         <Trophy size={15} />
         <span className="text-xs font-semibold uppercase tracking-wider">{label}</span>
       </div>
       {buyer ? (
-        <>
+        <div className="relative">
           <div className="text-xl font-bold leading-tight">{buyer.full_name}</div>
           <div className="text-white/80 text-lg font-semibold mt-1">{formatPHP(buyer.total_amount)}</div>
-          <div className="text-white/50 text-xs mt-1">{buyer.transaction_count} transaction{buyer.transaction_count !== 1 ? 's' : ''}</div>
-        </>
+          <div className="text-white/60 text-xs mt-1">{buyer.transaction_count} transaction{buyer.transaction_count !== 1 ? 's' : ''}</div>
+        </div>
       ) : (
-        <div className="text-white/50 text-sm mt-2">No data yet</div>
+        <div className="relative text-white/60 text-sm mt-2">No data yet</div>
       )}
     </motion.div>
   )
@@ -54,7 +60,7 @@ function BestBuyerCard({ label, buyer, gradient, delay }) {
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-4 py-3 text-xs">
+    <div className="bg-white/95 backdrop-blur border border-slate-200 rounded-xl shadow-xl px-4 py-3 text-xs">
       <div className="font-semibold text-slate-700 mb-1">{label}</div>
       <div className="text-blue-600 font-bold">{formatPHP(payload[0]?.value)}</div>
       <div className="text-slate-400">{payload[0]?.payload?.count} transactions</div>
@@ -64,6 +70,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const { colors } = useTheme()
   const [stats, setStats]               = useState(null)
   const [chartData, setChartData]       = useState([])
   const [topBuyers, setTopBuyers]       = useState([])
@@ -83,7 +90,7 @@ export default function Dashboard() {
       const [s, rev, txns, bm, by, tops] = await Promise.all([
         window.electron.invoke('analytics:dashboard'),
         window.electron.invoke('analytics:monthlyRevenue', year),
-        window.electron.invoke('transactions:getAll', {}),
+        window.electron.invoke('transactions:recent', 10),
         window.electron.invoke('analytics:bestBuyerMonthly', { year, month }),
         window.electron.invoke('analytics:bestBuyerYearly', year),
         window.electron.invoke('analytics:topBuyers', { year: null, month: null, limit: 5 })
@@ -93,7 +100,7 @@ export default function Dashboard() {
         const d = rev.find(r => parseInt(r.month) === i + 1)
         return { month: m, revenue: d?.total || 0, count: d?.count || 0 }
       }))
-      setRecentTxns(txns.slice(0, 10))
+      setRecentTxns(txns)
       setBestMonthly(bm)
       setBestYearly(by)
       setTopBuyers(tops)
@@ -114,10 +121,10 @@ export default function Dashboard() {
     <div className="page-container">
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Revenue"   value={formatPHP(stats?.totalRevenue)}    sub="All time"           icon={DollarSign} iconBg="bg-blue-600"    delay={0} />
-        <StatCard title="Total Customers" value={stats?.totalCustomers ?? 0}        sub="Registered"         icon={Users}      iconBg="bg-emerald-500" delay={0.05} />
-        <StatCard title="This Month"      value={formatPHP(stats?.monthlyRevenue)}  sub={`${MONTH_SHORT[month-1]} ${year}`} icon={TrendingUp} iconBg="bg-amber-500" delay={0.1} />
-        <StatCard title="Transactions"    value={stats?.totalTransactions ?? 0}     sub="Total records"      icon={ShoppingCart} iconBg="bg-violet-500" delay={0.15} />
+        <StatCard title="Total Revenue"   value={stats?.totalRevenue}      format={formatPHP} sub="All time"   icon={DollarSign} iconBg="bg-blue-600"    delay={0} />
+        <StatCard title="Total Customers" value={stats?.totalCustomers}    format={v => formatNumber(Math.round(v))} sub="Registered" icon={Users} iconBg="bg-emerald-500" delay={0.05} />
+        <StatCard title="This Month"      value={stats?.monthlyRevenue}    format={formatPHP} sub={`${MONTH_SHORT[month-1]} ${year}`} icon={TrendingUp} iconBg="bg-amber-500" delay={0.1} />
+        <StatCard title="Transactions"    value={stats?.totalTransactions} format={v => formatNumber(Math.round(v))} sub="Total records" icon={ShoppingCart} iconBg="bg-violet-500" delay={0.15} />
       </div>
 
       {/* Best buyers */}
@@ -131,7 +138,7 @@ export default function Dashboard() {
         <BestBuyerCard
           label={`Best Buyer — Year ${year}`}
           buyer={bestYearly}
-          gradient="bg-gradient-to-br from-blue-600 to-indigo-700"
+          gradient="bg-gradient-to-br from-blue-600 to-indigo-700 shadow-blue-600/20"
           delay={0.25}
         />
       </div>
@@ -144,12 +151,12 @@ export default function Dashboard() {
           </div>
           <ResponsiveContainer width="100%" height={210}>
             <BarChart data={chartData} barSize={28} margin={{ left: -10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false}
-                tickFormatter={v => v >= 1000 ? `₱${(v/1000).toFixed(0)}k` : `₱${v}`} />
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: '#EFF6FF', radius: 6 }} />
-              <Bar dataKey="revenue" fill="#3B82F6" radius={[5, 5, 0, 0]} />
+              <CartesianGrid stroke={colors.grid} vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} width={68}
+                tickFormatter={formatCompactPHP} />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: colors.cursor, radius: 6 }} />
+              <Bar dataKey="revenue" fill={colors.current} radius={[5, 5, 0, 0]} maxBarSize={24} animationDuration={900} />
             </BarChart>
           </ResponsiveContainer>
         </motion.div>
@@ -218,12 +225,10 @@ export default function Dashboard() {
               ) : recentTxns.map(t => (
                 <tr key={t.id} className="hover:bg-slate-50/60 transition-colors">
                   <td className="table-cell">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-[11px] font-bold text-blue-600 flex-shrink-0">
-                        {t.customer_name?.[0]?.toUpperCase()}
-                      </div>
-                      <span className="font-medium text-slate-800">{t.customer_name}</span>
-                    </div>
+                    <button onClick={() => navigate(`/customers/${t.customer_id}`)} className="flex items-center gap-2.5 group text-left">
+                      <Avatar name={t.customer_name} size={28} />
+                      <span className="font-medium text-slate-800 group-hover:text-blue-600 transition-colors">{t.customer_name}</span>
+                    </button>
                   </td>
                   <td className="table-cell text-slate-500">{t.description || '—'}</td>
                   <td className="table-cell text-slate-500">{formatDateShort(t.date)}</td>

@@ -1,240 +1,152 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Edit, Filter, X, Receipt, Search } from 'lucide-react'
-import Modal from '../components/Modal'
+import { Plus, Trash2, Edit, Filter, X, Receipt, Search, CalendarRange, Wallet } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Pagination from '../components/Pagination'
+import Avatar from '../components/Avatar'
+import AnimatedNumber from '../components/AnimatedNumber'
+import { AddTransactionModal, EditTransactionModal } from '../components/TransactionForms'
 import { useToast } from '../context/ToastContext'
-import { formatPHP, formatDate, formatDateShort, formatRecordedAt, toDateInput } from '../utils/format'
+import usePaged from '../hooks/usePaged'
+import { formatPHP, formatNumber, formatDate, formatDateShort, formatRecordedAt, toDateInput } from '../utils/format'
 
-function AddTxnModal({ onClose, onSuccess }) {
-  const { showToast } = useToast()
-  const [customers, setCustomers] = useState([])
-  const [form, setForm] = useState({ customer_id: '', amount: '', description: '', date: toDateInput() })
-  const [saving, setSaving] = useState(false)
-  const set = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }))
-
-  useEffect(() => {
-    window.electron.invoke('customers:getAllLite').then(setCustomers)
-  }, [])
-
-  async function submit(e) {
-    e.preventDefault()
-    if (!form.customer_id) { showToast('Please select a customer', 'error'); return }
-    if (!form.amount || parseFloat(form.amount) <= 0) { showToast('Enter a valid amount', 'error'); return }
-    setSaving(true)
-    try {
-      await window.electron.invoke('transactions:add', {
-        customer_id: parseInt(form.customer_id),
-        amount: parseFloat(form.amount),
-        description: form.description || null,
-        date: form.date
-      })
-      showToast('Transaction added!', 'success')
-      onSuccess()
-      onClose()
-    } catch (err) { showToast(err?.message || 'Failed to add transaction', 'error') }
-    finally { setSaving(false) }
+function rangeFor(key) {
+  const now = new Date()
+  const iso = toDateInput
+  const today = iso(now)
+  if (key === 'today') return { startDate: today, endDate: today }
+  if (key === 'week') {
+    const d = new Date(now); d.setDate(now.getDate() - ((now.getDay() + 6) % 7))
+    return { startDate: iso(d), endDate: today }
   }
-
-  return (
-    <Modal title="Add Transaction" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Customer *</label>
-          <select className="input-field" value={form.customer_id} onChange={set('customer_id')} required>
-            <option value="">Select a customer…</option>
-            {customers.map(c => (
-              <option key={c.id} value={c.id}>{c.full_name}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Amount (PHP) *</label>
-          <div className="relative">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">₱</span>
-            <input type="number" min="0.01" step="0.01" className="input-field pl-8"
-              value={form.amount} onChange={set('amount')} placeholder="0.00" required />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Date *</label>
-          <input type="date" className="input-field" value={form.date} onChange={set('date')} required />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Description</label>
-          <input className="input-field" value={form.description} onChange={set('description')} placeholder="Optional" />
-        </div>
-        <div className="flex gap-3 pt-1">
-          <button type="button" onClick={onClose} className="btn-secondary flex-1 justify-center">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center">
-            {saving ? 'Adding…' : 'Add Transaction'}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  )
+  if (key === 'month') return { startDate: `${today.slice(0, 7)}-01`, endDate: today }
+  if (key === 'year') return { startDate: `${today.slice(0, 4)}-01-01`, endDate: today }
+  return { startDate: '', endDate: '' }
 }
 
-function EditTxnModal({ txn, onClose, onSuccess }) {
-  const { showToast } = useToast()
-  const [form, setForm] = useState({
-    amount: String(txn.amount),
-    description: txn.description || '',
-    date: toDateInput(txn.date)
-  })
-  const [saving, setSaving] = useState(false)
-  const set = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }))
+const QUICK = [
+  { key: 'all', label: 'All time' },
+  { key: 'today', label: 'Today' },
+  { key: 'week', label: 'This week' },
+  { key: 'month', label: 'This month' },
+  { key: 'year', label: 'This year' }
+]
 
-  async function submit(e) {
-    e.preventDefault()
-    if (!form.amount || parseFloat(form.amount) <= 0) { showToast('Enter a valid amount', 'error'); return }
-    setSaving(true)
-    try {
-      await window.electron.invoke('transactions:update', {
-        id: txn.id,
-        data: {
-          amount: parseFloat(form.amount),
-          description: form.description || null,
-          date: form.date
-        }
-      })
-      showToast('Transaction updated!', 'success')
-      onSuccess()
-      onClose()
-    } catch (err) { showToast(err?.message || 'Failed to update transaction', 'error') }
-    finally { setSaving(false) }
-  }
-
-  return (
-    <Modal title={`Edit Transaction — ${txn.customer_name}`} onClose={onClose}>
-      <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Amount (PHP) *</label>
-          <div className="relative">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">₱</span>
-            <input type="number" min="0.01" step="0.01" className="input-field pl-8"
-              value={form.amount} onChange={set('amount')} placeholder="0.00" required autoFocus />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Date *</label>
-          <input type="date" className="input-field" value={form.date} onChange={set('date')} required />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Description</label>
-          <input className="input-field" value={form.description} onChange={set('description')} placeholder="Optional" />
-        </div>
-        <div className="flex gap-3 pt-1">
-          <button type="button" onClick={onClose} className="btn-secondary flex-1 justify-center">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center">
-            {saving ? 'Saving…' : 'Save Changes'}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  )
+export function SkeletonRows({ cols, rows = 8 }) {
+  return Array.from({ length: rows }, (_, i) => (
+    <tr key={i}>
+      {Array.from({ length: cols }, (_, j) => (
+        <td key={j} className="px-5 py-4"><div className="skeleton h-3.5" style={{ width: `${40 + ((i * 7 + j * 13) % 50)}%` }} /></td>
+      ))}
+    </tr>
+  ))
 }
 
 export default function Transactions() {
   const navigate = useNavigate()
   const { showToast } = useToast()
 
-  const [transactions, setTransactions] = useState([])
-  const [loading, setLoading]           = useState(true)
+  const [query, setQuery]               = useState('')
+  const [filters, setFilters]           = useState({ startDate: '', endDate: '' })
+  const [quick, setQuick]               = useState('all')
+  const [showFilters, setShowFilters]   = useState(false)
   const [addOpen, setAddOpen]           = useState(false)
   const [editTarget, setEditTarget]     = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  const [filters, setFilters]           = useState({ startDate: '', endDate: '' })
-  const [showFilters, setShowFilters]   = useState(false)
-  const [query, setQuery]               = useState('')
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const f = {}
-      if (filters.startDate) f.startDate = filters.startDate
-      if (filters.endDate)   f.endDate   = filters.endDate
-      const data = await window.electron.invoke('transactions:getAll', f)
-      setTransactions(data)
-    } finally { setLoading(false) }
-  }, [filters])
+  const params = useMemo(() => ({ search: query.trim(), ...filters }), [query, filters])
+  const paged = usePaged('transactions:page', params, { sizeKey: 'ct-size-transactions', defaultSize: 50, debounce: query ? 220 : 0 })
 
-  useEffect(() => { load() }, [load])
+  function pickQuick(key) {
+    setQuick(key)
+    setFilters(rangeFor(key))
+  }
+
+  function setCustomRange(patch) {
+    setQuick('custom')
+    setFilters(p => ({ ...p, ...patch }))
+  }
 
   async function handleDelete() {
     try {
       await window.electron.invoke('transactions:delete', deleteTarget.id)
       showToast('Transaction deleted', 'info')
       setDeleteTarget(null)
-      load()
+      paged.reload()
     } catch (err) { showToast(err?.message || 'Failed to delete transaction', 'error') }
   }
 
-  const clearFilters = () => setFilters({ startDate: '', endDate: '' })
-  const hasFilters = filters.startDate || filters.endDate
-
-  const q = query.trim().toLowerCase()
-  const visible = q
-    ? transactions.filter(t =>
-        (t.customer_name || '').toLowerCase().includes(q) ||
-        (t.description  || '').toLowerCase().includes(q)
-      )
-    : transactions
-  const total = visible.reduce((s, t) => s + t.amount, 0)
+  const hasFilters = !!(filters.startDate || filters.endDate)
+  const offset = (paged.page - 1) * paged.pageSize
 
   return (
     <div className="page-container">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+        <div className="flex items-center gap-2 flex-1 min-w-[260px]">
           <div className="relative flex-1 max-w-md">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
-              className="input-field pl-9"
+              className="input-field pl-9 pr-9"
               placeholder="Search by customer or description…"
               value={query}
               onChange={e => setQuery(e.target.value)}
             />
+            {query && (
+              <button onClick={() => setQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                <X size={13} />
+              </button>
+            )}
           </div>
           <button
             onClick={() => setShowFilters(v => !v)}
-            className={`btn-secondary ${hasFilters ? '!border-blue-400 !text-blue-600' : ''}`}
+            className={`btn-secondary ${hasFilters ? '!border-blue-300 !text-blue-600' : ''}`}
           >
-            <Filter size={15} /> Filters {hasFilters && <span className="badge bg-blue-100 text-blue-700 !px-1.5">Active</span>}
+            <Filter size={15} /> Dates {hasFilters && <span className="badge bg-blue-100 text-blue-700 !px-1.5">On</span>}
           </button>
-          {hasFilters && (
-            <button onClick={clearFilters} className="btn-ghost !px-2 !py-2 hover:text-red-500">
-              <X size={15} />
-            </button>
-          )}
         </div>
-        <button onClick={() => setAddOpen(true)} className="btn-primary">
+        <motion.button whileTap={{ scale: 0.97 }} onClick={() => setAddOpen(true)} className="btn-primary">
           <Plus size={16} /> Add Transaction
-        </button>
+        </motion.button>
       </div>
 
-      {/* Filter bar */}
-      <AnimatePresence>
+      {/* Date filters */}
+      <AnimatePresence initial={false}>
         {showFilters && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="card p-4 overflow-hidden"
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
           >
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">From Date</label>
-                <input type="date" className="input-field"
-                  value={filters.startDate}
-                  onChange={e => setFilters(p => ({ ...p, startDate: e.target.value }))} />
+            <div className="card p-4 space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {QUICK.map(q => (
+                  <button
+                    key={q.key}
+                    onClick={() => pickQuick(q.key)}
+                    className={`relative px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                      quick === q.key ? 'text-white' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
+                    }`}
+                  >
+                    {quick === q.key && (
+                      <motion.span layoutId="txn-quick" className="absolute inset-0 rounded-full bg-blue-600" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />
+                    )}
+                    <span className="relative">{q.label}</span>
+                  </button>
+                ))}
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">To Date</label>
-                <input type="date" className="input-field"
-                  value={filters.endDate}
-                  onChange={e => setFilters(p => ({ ...p, endDate: e.target.value }))} />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="field-label">From</label>
+                  <input type="date" className="input-field" value={filters.startDate} onChange={e => setCustomRange({ startDate: e.target.value })} />
+                </div>
+                <div>
+                  <label className="field-label">To</label>
+                  <input type="date" className="input-field" value={filters.endDate} onChange={e => setCustomRange({ endDate: e.target.value })} />
+                </div>
               </div>
             </div>
           </motion.div>
@@ -242,27 +154,39 @@ export default function Transactions() {
       </AnimatePresence>
 
       {/* Summary */}
-      {visible.length > 0 && (
-        <div className="flex items-center gap-4 px-1">
-          <div className="flex items-center gap-2 text-sm">
-            <Receipt size={14} className="text-slate-400" />
-            <span className="text-slate-500">
-              {visible.length} {q ? `of ${transactions.length}` : ''} records
-            </span>
-          </div>
-          <div className="text-sm font-bold text-slate-900">
-            Total: <span className="text-blue-600">{formatPHP(total)}</span>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="card p-4 flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><Receipt size={18} /></div>
+          <div>
+            <div className="text-xl font-bold text-slate-900 tabular-nums"><AnimatedNumber value={paged.total} format={v => formatNumber(Math.round(v))} /></div>
+            <div className="text-xs text-slate-500">{query || hasFilters ? 'Matching transactions' : 'Total transactions'}</div>
           </div>
         </div>
-      )}
+        <div className="card p-4 flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center"><Wallet size={18} /></div>
+          <div>
+            <div className="text-xl font-bold text-slate-900"><AnimatedNumber value={paged.sum || 0} format={formatPHP} /></div>
+            <div className="text-xs text-slate-500">Total amount</div>
+          </div>
+        </div>
+        <div className="card p-4 flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center"><CalendarRange size={18} /></div>
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-slate-900 truncate">
+              {hasFilters ? `${filters.startDate ? formatDateShort(filters.startDate) : 'Start'} – ${filters.endDate ? formatDateShort(filters.endDate) : 'Today'}` : 'All dates'}
+            </div>
+            <div className="text-xs text-slate-500">Period</div>
+          </div>
+        </div>
+      </div>
 
       {/* Table */}
-      <motion.div className="card overflow-hidden" layout>
-        <div className="overflow-x-auto">
+      <div className="card overflow-hidden">
+        <div className="overflow-auto max-h-[calc(100vh-380px)] min-h-[240px]">
           <table className="w-full">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr>
-                <th className="table-header">#</th>
+                <th className="table-header w-14">#</th>
                 <th className="table-header">Date</th>
                 <th className="table-header">Customer</th>
                 <th className="table-header">Description</th>
@@ -271,77 +195,62 @@ export default function Transactions() {
                 <th className="table-header text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                <tr><td colSpan={7} className="px-5 py-12 text-center text-slate-400 text-sm">Loading…</td></tr>
-              ) : visible.length === 0 ? (
+            <tbody className={`divide-y divide-slate-50 transition-opacity duration-200 ${paged.loading && paged.loaded ? 'opacity-50' : ''}`}>
+              {!paged.loaded ? (
+                <SkeletonRows cols={7} />
+              ) : paged.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center text-slate-400 text-sm">
-                    {q ? 'No transactions match your search.'
-                      : hasFilters ? 'No transactions for the selected period.'
-                      : 'No transactions yet.'}
+                  <td colSpan={7} className="px-5 py-16 text-center">
+                    <Receipt size={28} className="mx-auto text-slate-300" />
+                    <div className="text-sm font-medium text-slate-500 mt-3">
+                      {query ? 'No transactions match your search.' : hasFilters ? 'No transactions in this period.' : 'No transactions yet.'}
+                    </div>
                   </td>
                 </tr>
-              ) : (
-                visible.map((t, i) => (
-                  <motion.tr
-                    key={t.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: i * 0.015 }}
-                    className="hover:bg-slate-50/60 transition-colors"
-                  >
-                    <td className="table-cell text-slate-400 font-medium w-10">{i + 1}</td>
-                    <td className="table-cell font-medium text-slate-700 whitespace-nowrap">{formatDateShort(t.date)}</td>
-                    <td className="table-cell">
-                      <button
-                        onClick={() => navigate(`/customers/${t.customer_id}`)}
-                        className="flex items-center gap-2.5 group"
-                      >
-                        <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-[11px] font-bold text-blue-700 flex-shrink-0">
-                          {t.customer_name?.[0]?.toUpperCase()}
-                        </div>
-                        <span className="text-sm font-medium text-slate-800 group-hover:text-blue-600 transition-colors">
-                          {t.customer_name}
-                        </span>
-                      </button>
-                    </td>
-                    <td className="table-cell text-slate-500">{t.description || <span className="text-slate-300">—</span>}</td>
-                    <td className="table-cell text-right font-bold text-slate-900 whitespace-nowrap">{formatPHP(t.amount)}</td>
-                    <td className="table-cell text-slate-400 whitespace-nowrap text-xs">{formatRecordedAt(t.created_at)}</td>
-                    <td className="table-cell text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setEditTarget(t)} className="btn-ghost !px-2 !py-1 hover:text-blue-600" title="Edit">
-                          <Edit size={14} />
-                        </button>
-                        <button onClick={() => setDeleteTarget(t)} className="btn-ghost !px-2 !py-1 hover:text-red-500" title="Delete">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))
-              )}
+              ) : paged.rows.map((t, i) => (
+                <tr
+                  key={`${paged.page}-${t.id}`}
+                  className="hover:bg-slate-50/70 transition-colors animate-row-in"
+                  style={{ animationDelay: `${Math.min(i, 14) * 18}ms` }}
+                >
+                  <td className="table-cell text-slate-400 font-medium tabular-nums">{offset + i + 1}</td>
+                  <td className="table-cell font-medium text-slate-700 whitespace-nowrap">{formatDateShort(t.date)}</td>
+                  <td className="table-cell">
+                    <button onClick={() => navigate(`/customers/${t.customer_id}`)} className="flex items-center gap-2.5 group text-left">
+                      <Avatar name={t.customer_name} size={28} />
+                      <span className="text-sm font-medium text-slate-800 group-hover:text-blue-600 transition-colors whitespace-nowrap">{t.customer_name}</span>
+                    </button>
+                  </td>
+                  <td className="table-cell text-slate-500 max-w-[260px] truncate">{t.description || <span className="text-slate-300">—</span>}</td>
+                  <td className="table-cell text-right font-bold text-slate-900 whitespace-nowrap tabular-nums">{formatPHP(t.amount)}</td>
+                  <td className="table-cell text-slate-400 whitespace-nowrap text-xs">{formatRecordedAt(t.created_at)}</td>
+                  <td className="table-cell text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => setEditTarget(t)} className="btn-ghost !px-2 !py-1 hover:!text-blue-600" title="Edit"><Edit size={14} /></button>
+                      <button onClick={() => setDeleteTarget(t)} className="btn-ghost !px-2 !py-1 hover:!text-red-500" title="Delete"><Trash2 size={14} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
-            {visible.length > 0 && (
-              <tfoot>
-                <tr className="bg-slate-50 border-t border-slate-200">
-                  <td colSpan={5} className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    {visible.length} Transactions — Total
-                  </td>
-                  <td className="px-5 py-3 text-right text-base font-bold text-blue-700">{formatPHP(total)}</td>
-                  <td />
-                </tr>
-              </tfoot>
-            )}
           </table>
         </div>
-      </motion.div>
+        {paged.loaded && paged.total > 0 && (
+          <Pagination
+            page={paged.page}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            onPageChange={paged.setPage}
+            onPageSizeChange={paged.setPageSize}
+            loading={paged.loading}
+            label="transactions"
+            layoutId="txn-page"
+          />
+        )}
+      </div>
 
-      {addOpen && <AddTxnModal onClose={() => setAddOpen(false)} onSuccess={load} />}
-      {editTarget && (
-        <EditTxnModal txn={editTarget} onClose={() => setEditTarget(null)} onSuccess={load} />
-      )}
+      {addOpen && <AddTransactionModal onClose={() => setAddOpen(false)} onSuccess={paged.reload} />}
+      {editTarget && <EditTransactionModal txn={editTarget} onClose={() => setEditTarget(null)} onSuccess={paged.reload} />}
       {deleteTarget && (
         <ConfirmDialog
           title="Delete Transaction"
