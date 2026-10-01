@@ -345,6 +345,241 @@ export function getMonthlyReport(year, month) {
   return { year, month: ym, transactions, total, count: transactions.length, bestBuyer, dailyBreakdown }
 }
 
+// ─── Yearly Report ────────────────────────────────────────────────────────────
+
+// Date-range bounds instead of strftime so the yearly queries hit idx_transactions_date
+function yearRange(year) {
+  return [`${year}-01-01`, `${year}-12-31`]
+}
+
+function monthlySeries(year, customerId = null) {
+  const params = yearRange(year)
+  let where = 'date BETWEEN ? AND ?'
+  if (customerId) { where += ' AND customer_id = ?'; params.push(customerId) }
+  const rows = getDB().prepare(`
+    SELECT CAST(strftime('%m', date) AS INTEGER) AS month,
+           SUM(amount)                           AS total,
+           COUNT(*)                              AS count
+    FROM transactions
+    WHERE ${where}
+    GROUP BY month
+  `).all(...params)
+  return Array.from({ length: 12 }, (_, i) => {
+    const r = rows.find(x => x.month === i + 1)
+    return { month: i + 1, total: r?.total || 0, count: r?.count || 0 }
+  })
+}
+
+// Month-over-month growth. January compares against the previous December. The
+// month in progress and months that have not happened yet get no growth figure,
+// so a partial month never reads as a sharp drop.
+function withGrowth(monthly, prevMonthly, year) {
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() + 1
+  let cumulative = 0
+  return monthly.map((m, i) => {
+    const isFuture = year > currentYear || (year === currentYear && m.month > currentMonth)
+    const inProgress = year === currentYear && m.month === currentMonth
+    const prev = i === 0 ? prevMonthly[11].total : monthly[i - 1].total
+    cumulative += m.total
+    let growth = null
+    if (!isFuture && !inProgress && prev > 0) growth = ((m.total - prev) / prev) * 100
+    return {
+      ...m,
+      prevYearTotal: prevMonthly[i].total,
+      growth,
+      cumulative: isFuture ? null : cumulative,
+      isFuture,
+      inProgress
+    }
+  })
+}
+
+// While a year is still running, compare it with the same stretch of the year
+// before (Jan 1 to today's date) instead of that year's full total.
+function comparisonPeriod(year) {
+  const now = new Date()
+  if (year !== now.getFullYear()) return { through: '12-31', label: String(year - 1), isYtd: false }
+  const through = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return { through, label: `${year - 1} YTD`, isYtd: true }
+}
+
+function yearTotals(year, customerId = null, through = '12-31') {
+  const params = [`${year}-01-01`, `${year}-${through}`]
+  let where = 'date BETWEEN ? AND ?'
+  if (customerId) { where += ' AND customer_id = ?'; params.push(customerId) }
+  return getDB().prepare(`
+    SELECT COALESCE(SUM(amount), 0)    AS total,
+           COUNT(*)                    AS count,
+           COUNT(DISTINCT customer_id) AS buyers
+    FROM transactions
+    WHERE ${where}
+  `).get(...params)
+}
+
+function pctChange(current, previous) {
+  return previous > 0 ? ((current - previous) / previous) * 100 : null
+}
+
+export function getReportYears() {
+  const rows = getDB().prepare(`
+    SELECT DISTINCT CAST(strftime('%Y', date) AS INTEGER) AS year
+    FROM transactions
+    WHERE date IS NOT NULL
+    ORDER BY year DESC
+  `).all()
+  return rows.map(r => r.year).filter(Boolean)
+}
+
+export function getYearlyBuyers(year) {
+  const y = Number(year)
+  const rows = getDB().prepare(`
+    SELECT c.id, c.full_name, c.email, c.phone,
+           SUM(t.amount) AS total_amount,
+           COUNT(t.id)   AS transaction_count,
+           MAX(t.date)   AS last_purchase
+    FROM transactions t
+    JOIN customers c ON t.customer_id = c.id
+    WHERE t.date BETWEEN ? AND ?
+    GROUP BY c.id
+    ORDER BY total_amount DESC
+  `).all(...yearRange(y))
+  return rows.map((r, i) => ({ ...r, rank: i + 1 }))
+}
+
+export function getYearlyReport(year, limit = 10) {
+  const d = getDB()
+  const y = Number(year)
+  const range = yearRange(y)
+  const comparison = comparisonPeriod(y)
+  const totals = yearTotals(y)
+  const prevTotals = yearTotals(y - 1, null, comparison.through)
+  const monthly = withGrowth(monthlySeries(y), monthlySeries(y - 1), y)
+
+  const topBuyers = d.prepare(`
+    SELECT c.id, c.full_name, c.email, c.phone,
+           SUM(t.amount) AS total_amount,
+           COUNT(t.id)   AS transaction_count,
+           MAX(t.amount) AS largest_amount,
+           MAX(t.date)   AS last_purchase
+    FROM transactions t
+    JOIN customers c ON t.customer_id = c.id
+    WHERE t.date BETWEEN ? AND ?
+    GROUP BY c.id ORDER BY total_amount DESC LIMIT ?
+  `).all(...range, limit)
+
+  const topTransactions = d.prepare(`
+    SELECT t.*, c.full_name AS customer_name
+    FROM transactions t
+    JOIN customers c ON t.customer_id = c.id
+    WHERE t.date BETWEEN ? AND ?
+    ORDER BY t.amount DESC, t.date DESC LIMIT ?
+  `).all(...range, limit)
+
+  const active = monthly.filter(m => m.count > 0)
+  const bestMonth = active.length
+    ? active.reduce((best, m) => (m.total > best.total ? m : best))
+    : null
+
+  return {
+    year: y,
+    totals: {
+      ...totals,
+      average: totals.count ? totals.total / totals.count : 0,
+      revenueGrowth: pctChange(totals.total, prevTotals.total),
+      countGrowth: pctChange(totals.count, prevTotals.count),
+      buyersGrowth: pctChange(totals.buyers, prevTotals.buyers)
+    },
+    prevTotals,
+    comparison,
+    monthly,
+    bestMonth,
+    topBuyers: topBuyers.map(b => ({
+      ...b,
+      share: totals.total ? (b.total_amount / totals.total) * 100 : 0
+    })),
+    topTransactions
+  }
+}
+
+export function getBuyerYearlyStatement(customerId, year) {
+  const d = getDB()
+  const y = Number(year)
+  const id = Number(customerId)
+  const customer = getCustomerById(id)
+  if (!customer) throw new Error('Customer not found')
+
+  const range = yearRange(y)
+  const rows = d.prepare(`
+    SELECT id, amount, description, date, created_at
+    FROM transactions
+    WHERE customer_id = ? AND date BETWEEN ? AND ?
+    ORDER BY date ASC, created_at ASC, id ASC
+  `).all(id, ...range)
+
+  let running = 0
+  const transactions = rows.map(t => {
+    running += t.amount
+    return { ...t, running_total: running }
+  })
+
+  const monthly = withGrowth(monthlySeries(y, id), monthlySeries(y - 1, id), y)
+  const comparison = comparisonPeriod(y)
+  const prev = yearTotals(y - 1, id, comparison.through)
+  const yearAll = yearTotals(y)
+
+  const ranking = d.prepare(`
+    SELECT customer_id
+    FROM transactions
+    WHERE date BETWEEN ? AND ?
+    GROUP BY customer_id ORDER BY SUM(amount) DESC
+  `).all(...range)
+  const rankIndex = ranking.findIndex(r => r.customer_id === id)
+
+  const total = running
+  const count = transactions.length
+  const largest = count ? transactions.reduce((a, b) => (b.amount > a.amount ? b : a)) : null
+  const smallest = count ? transactions.reduce((a, b) => (b.amount < a.amount ? b : a)) : null
+  const active = monthly.filter(m => m.count > 0)
+  const bestMonth = active.length ? active.reduce((a, b) => (b.total > a.total ? b : a)) : null
+
+  // Average spacing between distinct purchase dates — a simple buying-cadence signal
+  const days = [...new Set(transactions.map(t => t.date))]
+  let avgDaysBetween = null
+  if (days.length > 1) {
+    const span = (new Date(days[days.length - 1]) - new Date(days[0])) / 86400000
+    avgDaysBetween = span / (days.length - 1)
+  }
+
+  return {
+    year: y,
+    customer,
+    transactions,
+    monthly,
+    comparison,
+    audit: {
+      total,
+      count,
+      average: count ? total / count : 0,
+      largest,
+      smallest,
+      firstPurchase: count ? transactions[0].date : null,
+      lastPurchase: count ? transactions[count - 1].date : null,
+      activeMonths: active.length,
+      bestMonth,
+      avgDaysBetween,
+      prevTotal: prev.total,
+      prevCount: prev.count,
+      growth: pctChange(total, prev.total),
+      rank: rankIndex >= 0 ? rankIndex + 1 : null,
+      buyerCount: ranking.length,
+      share: yearAll.total ? (total / yearAll.total) * 100 : 0,
+      yearRevenue: yearAll.total
+    }
+  }
+}
+
 // ─── Activity Log ─────────────────────────────────────────────────────────────
 
 export function getActivityPage({ page = 1, pageSize = 50, action = null } = {}) {

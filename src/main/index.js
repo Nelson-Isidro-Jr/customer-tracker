@@ -143,6 +143,10 @@ handle('analytics:topBuyers',        (_, { year, month, limit }) => db.getTopBuy
 // ─── IPC: Reports ─────────────────────────────────────────────────────────────
 handle('reports:daily',   (_, date)            => db.getDailyReport(date))
 handle('reports:monthly', (_, { year, month }) => db.getMonthlyReport(year, month))
+handle('reports:years',        ()                        => db.getReportYears())
+handle('reports:yearly',       (_, year)                 => db.getYearlyReport(year))
+handle('reports:yearlyBuyers', (_, year)                 => db.getYearlyBuyers(year))
+handle('reports:buyerYearly',  (_, { customerId, year }) => db.getBuyerYearlyStatement(customerId, year))
 
 // ─── IPC: Data Import / Export ────────────────────────────────────────────────
 handle('data:clearAll', () => db.clearAllData())
