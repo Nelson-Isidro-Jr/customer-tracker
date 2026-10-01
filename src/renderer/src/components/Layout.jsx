@@ -1,98 +1,110 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  LayoutDashboard, Users, Receipt, BarChart2,
-  Database, ChevronRight, TrendingUp, Settings, History, CalendarRange
+  LayoutDashboard, Users, Receipt, BarChart2, Gift, ScrollText,
+  Database, ChevronRight, TrendingUp, Settings, CalendarRange, Sun, Sunset, Moon
 } from 'lucide-react'
 import { useSettings } from '../context/SettingsContext'
+import { UserAvatar } from './Avatar'
+import { greetingFor } from '../greeting/messages'
 
 const NAV = [
-  { to: '/',             label: 'Dashboard',    icon: LayoutDashboard, end: true },
-  { to: '/customers',    label: 'Customers',    icon: Users },
-  { to: '/transactions', label: 'Transactions', icon: Receipt },
-  { to: '/history',      label: 'History',      icon: History },
-  { to: '/reports',      label: 'Reports',      icon: BarChart2 },
-  { to: '/yearly',       label: 'Yearly Report', icon: CalendarRange },
-  { to: '/data',         label: 'Import / Export', icon: Database },
+  {
+    label: 'Menu',
+    items: [
+      { to: '/',             label: 'Dashboard',    icon: LayoutDashboard, end: true },
+      { to: '/customers',    label: 'Customers',    icon: Users },
+      { to: '/transactions', label: 'Transactions', icon: Receipt },
+      { to: '/rewards',      label: 'Rewards',      icon: Gift }
+    ]
+  },
+  {
+    label: 'Reports',
+    items: [
+      { to: '/reports', label: 'Reports',       icon: BarChart2 },
+      { to: '/yearly',  label: 'Yearly Report', icon: CalendarRange }
+    ]
+  },
+  {
+    label: 'System',
+    items: [
+      { to: '/activity', label: 'Activity Log',    icon: ScrollText },
+      { to: '/data',     label: 'Import / Export', icon: Database }
+    ]
+  }
 ]
+
+function NavItem({ to, label, icon: Icon, end }) {
+  return (
+    <NavLink to={to} end={end} className="group relative block">
+      {({ isActive }) => (
+        <div className={`relative flex items-center justify-between px-3 py-2.5 rounded-xl transition-colors duration-150 ${
+          isActive ? 'text-white' : 'text-sidebar-muted hover:text-sidebar-fg hover:bg-sidebar-fg/5'
+        }`}>
+          {isActive && (
+            <motion.span
+              layoutId="sidebar-active"
+              className="absolute inset-0 rounded-xl bg-blue-600 shadow-lg shadow-blue-600/25"
+              transition={{ type: 'spring', stiffness: 480, damping: 38 }}
+            />
+          )}
+          <div className="relative flex items-center gap-3">
+            <Icon size={17} className={isActive ? 'text-white' : 'text-sidebar-dim group-hover:text-sidebar-fg transition-colors'} />
+            <span className="text-sm font-medium">{label}</span>
+          </div>
+          {isActive && <ChevronRight size={14} className="relative opacity-70" />}
+        </div>
+      )}
+    </NavLink>
+  )
+}
 
 function Sidebar() {
   const { settings } = useSettings()
+  const navigate = useNavigate()
   const name = settings?.userName || 'Nelson Isidro'
-  const initials = name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
 
   return (
-    <aside className="w-60 flex-shrink-0 bg-[#0B1120] flex flex-col h-full select-none">
+    <aside className="w-60 flex-shrink-0 bg-sidebar flex flex-col h-full select-none">
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-white/5">
+      <div className="px-5 py-5 border-b border-sidebar-fg/5">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
+          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/30">
             <TrendingUp size={18} className="text-white" />
           </div>
           <div>
-            <div className="text-white font-bold text-sm leading-tight">Customer</div>
-            <div className="text-blue-400 font-semibold text-xs tracking-wider uppercase">Tracker</div>
+            <div className="text-sidebar-fg font-bold text-sm leading-tight">Customer</div>
+            <div className="text-sidebar-accent font-semibold text-xs tracking-wider uppercase">Tracker</div>
           </div>
         </div>
       </div>
 
-      {/* Main Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        <p className="text-slate-600 text-[10px] font-semibold uppercase tracking-widest px-3 mb-2">Menu</p>
-        {NAV.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              `group flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 ${
-                isActive
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400 hover:bg-white/5 hover:text-white'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <div className="flex items-center gap-3">
-                  <Icon size={17} className={isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'} />
-                  <span className="text-sm font-medium">{label}</span>
-                </div>
-                {isActive && <ChevronRight size={14} className="opacity-60" />}
-              </>
-            )}
-          </NavLink>
+      {/* Nav */}
+      <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
+        {NAV.map(group => (
+          <div key={group.label}>
+            <p className="text-sidebar-faint text-[10px] font-semibold uppercase tracking-widest px-3 mb-2">{group.label}</p>
+            <div className="space-y-0.5">
+              {group.items.map(item => <NavItem key={item.to} {...item} />)}
+            </div>
+          </div>
         ))}
       </nav>
 
-      {/* Bottom section: Settings + user */}
-      <div className="px-3 py-3 border-t border-white/5 space-y-1">
-        <NavLink
-          to="/settings"
-          className={({ isActive }) =>
-            `group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 ${
-              isActive
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white'
-            }`
-          }
+      {/* Settings + user */}
+      <div className="px-3 py-3 border-t border-sidebar-fg/5 space-y-1">
+        <NavItem to="/settings" label="Settings" icon={Settings} />
+        <button
+          onClick={() => navigate('/settings')}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-sidebar-fg/5 transition-colors text-left"
+          title="Edit profile"
         >
-          {({ isActive }) => (
-            <>
-              <Settings size={17} className={isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'} />
-              <span className="text-sm font-medium">Settings</span>
-            </>
-          )}
-        </NavLink>
-
-        <div className="flex items-center gap-3 px-3 py-2.5">
-          <div className="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center flex-shrink-0">
-            <span className="text-blue-400 text-xs font-bold">{initials}</span>
-          </div>
+          <UserAvatar size={32} />
           <div className="min-w-0">
-            <div className="text-white text-xs font-semibold truncate">{name}</div>
+            <div className="text-sidebar-fg text-xs font-semibold truncate">{name}</div>
+            <div className="text-sidebar-dim text-[10px]">Owner · Edit profile</div>
           </div>
-        </div>
+        </button>
       </div>
     </aside>
   )
@@ -102,31 +114,58 @@ const PAGE_TITLES = {
   '/': 'Dashboard',
   '/customers': 'Customers',
   '/transactions': 'Transactions',
-  '/history': 'Activity History',
+  '/rewards': 'Rewards',
+  '/activity': 'Activity Log',
   '/reports': 'Reports',
   '/yearly': 'Yearly Report',
   '/data': 'Import / Export',
   '/settings': 'Settings'
 }
 
+const PERIOD_ICON = { morning: Sun, afternoon: Sunset, evening: Moon }
+
 export default function Layout({ children }) {
   const location = useLocation()
   const { settings } = useSettings()
   const base = '/' + location.pathname.split('/')[1]
-  const title = PAGE_TITLES[base] || PAGE_TITLES[location.pathname] || 'Customer Tracker'
+  const title = location.pathname.startsWith('/customers/') ? 'Customer Profile' : (PAGE_TITLES[base] || 'Customer Tracker')
+  const greet = greetingFor()
+  const GreetIcon = PERIOD_ICON[greet.period]
+  const firstName = (settings?.userName || '').split(' ')[0]
 
   return (
-    <div className="flex h-screen bg-[#F1F5F9] overflow-hidden">
+    <div className="flex h-screen bg-page overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="bg-white border-b border-slate-200 px-6 py-3.5 flex-shrink-0">
-          <div className="flex items-center gap-2 text-slate-400">
-            <span className="text-xs font-medium">{settings?.userName || 'Nelson Isidro'}</span>
-            <ChevronRight size={12} />
-            <span className="text-xs font-semibold text-slate-700">{title}</span>
+        <header className="bg-white border-b border-slate-200 px-6 py-3.5 flex-shrink-0 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-slate-400">
+              <span className="text-xs font-medium">{settings?.userName || 'Nelson Isidro'}</span>
+              <ChevronRight size={12} />
+              <span className="text-xs font-semibold text-slate-700">{title}</span>
+            </div>
+            <motion.h1
+              key={title}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className="text-lg font-bold text-slate-900 mt-0.5"
+            >
+              {title}
+            </motion.h1>
           </div>
-          <h1 className="text-lg font-bold text-slate-900 mt-0.5">{title}</h1>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="hidden md:block text-right">
+              <div className="flex items-center justify-end gap-1.5 text-xs font-semibold text-slate-700">
+                <GreetIcon size={13} className="text-amber-500" /> {greet.text}{firstName ? `, ${firstName}` : ''}
+              </div>
+              <div className="text-[11px] text-slate-400">
+                {new Date().toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              </div>
+            </div>
+            <UserAvatar size={36} ring />
+          </div>
         </header>
 
         {/* Content */}
@@ -135,7 +174,7 @@ export default function Layout({ children }) {
             key={location.pathname}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.22 }}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             className="h-full"
           >
             {children}
