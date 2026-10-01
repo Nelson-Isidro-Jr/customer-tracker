@@ -3,6 +3,8 @@ import path from 'path'
 import fs from 'fs'
 import * as db from './database'
 import { REPORT_CONFIG } from './config'
+import { buildYearlyReportHtml, buildBuyerStatementHtml } from './pdfTemplates'
+import { exportPdf, openPdf, slugify } from './pdfExport'
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
@@ -148,6 +150,34 @@ handle('reports:years',        ()                        => db.getReportYears())
 handle('reports:yearly',       (_, year)                 => db.getYearlyReport(year, REPORT_CONFIG.topLimit))
 handle('reports:yearlyBuyers', (_, year)                 => db.getYearlyBuyers(year))
 handle('reports:buyerYearly',  (_, { customerId, year }) => db.getBuyerYearlyStatement(customerId, year))
+
+// ─── IPC: PDF Export ──────────────────────────────────────────────────────────
+function pdfMeta() {
+  return { brand: REPORT_CONFIG, preparedBy: readSettings().userName || 'Nelson Isidro', generatedAt: new Date() }
+}
+
+handle('reports:exportYearlyPdf', async (_, year) => {
+  const report = db.getYearlyReport(year, REPORT_CONFIG.topLimit)
+  return exportPdf({
+    html: buildYearlyReportHtml(report, pdfMeta()),
+    footerLabel: `${REPORT_CONFIG.companyName} · Annual Sales Report ${report.year}`,
+    defaultName: `annual-sales-report-${report.year}.pdf`,
+    title: 'Export Annual Report to PDF'
+  })
+})
+
+handle('reports:exportBuyerPdf', async (_, { customerId, year }) => {
+  const statement = db.getBuyerYearlyStatement(customerId, year)
+  const name = statement.customer.full_name
+  return exportPdf({
+    html: buildBuyerStatementHtml(statement, pdfMeta()),
+    footerLabel: `${REPORT_CONFIG.companyName} · ${name} · Statement & Audit ${statement.year}`,
+    defaultName: `customer-statement-${slugify(name)}-${statement.year}.pdf`,
+    title: 'Export Customer Statement to PDF'
+  })
+})
+
+handle('reports:openPdf', (_, filePath) => openPdf(filePath))
 
 // ─── IPC: Data Import / Export ────────────────────────────────────────────────
 handle('data:clearAll', () => db.clearAllData())
