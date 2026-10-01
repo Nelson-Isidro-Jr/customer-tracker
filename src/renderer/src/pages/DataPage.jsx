@@ -9,7 +9,8 @@ function ActionCard({ icon: Icon, iconBg, title, description, buttonLabel, butto
     <motion.div
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      className="card p-6 flex flex-col gap-4"
+      whileHover={{ y: -3 }}
+      className="card p-6 flex flex-col gap-4 transition-shadow hover:shadow-md"
     >
       <div className={`w-12 h-12 ${iconBg} rounded-2xl flex items-center justify-center`}>
         <Icon size={22} className="text-white" />
@@ -63,16 +64,17 @@ export default function DataPage() {
   return (
     <div className="page-container">
       {/* Info banner */}
-      <div className="card p-4 flex items-start gap-3 border-blue-200 bg-blue-50/60">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-4 flex items-start gap-3 border-blue-200 bg-blue-50/60">
         <Database size={18} className="text-blue-500 flex-shrink-0 mt-0.5" />
         <div>
           <div className="text-sm font-semibold text-blue-900 mb-0.5">Database Management</div>
           <div className="text-xs text-blue-700 leading-relaxed">
-            Export a backup to save all your data as a JSON file. Import a backup to restore from a previous save.
-            Export to Excel for clean spreadsheet reports. <strong>Importing replaces all current data.</strong>
+            Export a backup to save customers, transactions, prizes, claims, and point adjustments as one JSON file.
+            Import a backup to restore from a previous save, or export to Excel for spreadsheet reports.
+            <strong> Importing replaces all current data</strong> — the Activity Log is kept and records the import.
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Action cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -80,7 +82,7 @@ export default function DataPage() {
           icon={Download}
           iconBg="bg-emerald-600"
           title="Export Backup"
-          description="Save all customers and transactions to a JSON backup file. Use this to back up your data or transfer it to another device."
+          description="Save every customer, transaction, prize, and reward claim to a JSON backup file. Use it to back up or move your data to another computer."
           buttonLabel="Export Backup (.json)"
           buttonClass="btn-secondary"
           onClick={handleExportBackup}
@@ -90,7 +92,7 @@ export default function DataPage() {
           icon={Upload}
           iconBg="bg-amber-500"
           title="Import Backup"
-          description="Restore data from a previously exported JSON backup file. Warning: this will replace ALL current data with the backup."
+          description="Restore from a previously exported JSON backup. Older backups without rewards data work too. This replaces ALL current data."
           buttonLabel="Import Backup (.json)"
           buttonClass="btn-secondary"
           onClick={() => setConfirmImport(true)}
@@ -100,7 +102,7 @@ export default function DataPage() {
           icon={FileSpreadsheet}
           iconBg="bg-blue-600"
           title="Export to Excel"
-          description="Export all customers and transactions to a clean Excel file with separate sheets. Perfect for analysis and sharing."
+          description="Export customers (with total spent and points) and all transactions to an Excel file with separate sheets."
           buttonLabel="Export All to Excel (.xlsx)"
           buttonClass="btn-primary"
           onClick={handleExportExcel}
@@ -115,7 +117,8 @@ export default function DataPage() {
         </h3>
         <ul className="space-y-2 text-xs text-slate-500">
           <li className="flex items-start gap-2"><span className="text-slate-300 mt-0.5">•</span> Export a backup regularly to protect your data.</li>
-          <li className="flex items-start gap-2"><span className="text-slate-300 mt-0.5">•</span> The database file is stored in your Windows user profile (AppData). Uninstalling the app does not delete it.</li>
+          <li className="flex items-start gap-2"><span className="text-slate-300 mt-0.5">•</span> The database file is stored in your Windows user profile (AppData). Uninstalling or updating the app does not delete it.</li>
+          <li className="flex items-start gap-2"><span className="text-slate-300 mt-0.5">•</span> Each time a new version is installed, a copy of the database is kept in the <code className="text-slate-500">backups</code> folder next to it before anything changes.</li>
           <li className="flex items-start gap-2"><span className="text-slate-300 mt-0.5">•</span> Use the Excel export for sharing reports with others or opening in Microsoft Excel / Google Sheets.</li>
           <li className="flex items-start gap-2"><span className="text-slate-300 mt-0.5">•</span> Only import backups created by this application (Customer Tracker JSON format).</li>
         </ul>
@@ -124,7 +127,7 @@ export default function DataPage() {
       {confirmImport && (
         <ConfirmDialog
           title="Import Backup"
-          message="Importing will permanently replace ALL your current customers and transactions with the data from the backup file. Are you sure you want to continue?"
+          message="Importing will permanently replace ALL your current customers, transactions, prizes, and claims with the data from the backup file. Are you sure you want to continue?"
           onConfirm={handleImportBackup}
           onCancel={() => setConfirmImport(false)}
         />
