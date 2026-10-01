@@ -24,11 +24,18 @@ export const formatDateTime = (dateStr) => {
   })
 }
 
-// For SQLite created_at strings like "2026-05-07 14:34:12"
+// SQLite CURRENT_TIMESTAMP values ("2026-05-07 14:34:12") are UTC; mark them
+// as such so they display in the computer's local time
+export const parseSqliteTime = (sqliteStr) => {
+  const s = String(sqliteStr || '').trim()
+  if (!s) return new Date(NaN)
+  const iso = s.includes('T') ? s : s.replace(' ', 'T')
+  return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`)
+}
+
 export const formatRecordedAt = (sqliteStr) => {
   if (!sqliteStr) return '—'
-  // SQLite stores as "YYYY-MM-DD HH:MM:SS" — replace space with T so JS Date parses as local
-  const d = new Date(String(sqliteStr).replace(' ', 'T'))
+  const d = parseSqliteTime(sqliteStr)
   if (isNaN(d)) return sqliteStr
   return d.toLocaleString('en-PH', {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -38,7 +45,7 @@ export const formatRecordedAt = (sqliteStr) => {
 
 export const formatTimeOnly = (sqliteStr) => {
   if (!sqliteStr) return '—'
-  const d = new Date(String(sqliteStr).replace(' ', 'T'))
+  const d = parseSqliteTime(sqliteStr)
   if (isNaN(d)) return '—'
   return d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })
 }
@@ -66,5 +73,9 @@ export const MONTH_NAMES = [
 
 export const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-export const toDateInput = (d = new Date()) =>
-  d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10)
+// yyyy-MM-dd in local time (toISOString alone would give the UTC date, which
+// is still "yesterday" in the Philippines until 8 AM)
+export const toDateInput = (d = new Date()) => {
+  if (!(d instanceof Date)) return String(d).slice(0, 10)
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+}

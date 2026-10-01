@@ -14,8 +14,10 @@ export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
 
   const showToast = useCallback((message, type = 'info', duration = 3500) => {
-    const id = Date.now()
-    setToasts(prev => [...prev, { id, message, type }])
+    const id = Date.now() + Math.random()
+    // IPC errors arrive as "Error invoking remote method 'x': Error: real message"
+    const text = String(message ?? '').replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+    setToasts(prev => [...prev, { id, message: text, type }])
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration)
   }, [])
 
@@ -33,7 +35,7 @@ export function ToastProvider({ children }) {
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, x: 60, scale: 0.95 }}
               transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-              className="pointer-events-auto flex items-center gap-3 bg-white border border-slate-200 rounded-2xl shadow-lg px-4 py-3 min-w-[280px] max-w-xs"
+              className="pointer-events-auto flex items-center gap-3 bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-900/10 px-4 py-3 min-w-[280px] max-w-sm"
             >
               {ICONS[toast.type]}
               <span className="text-sm text-slate-800 font-medium flex-1">{toast.message}</span>
