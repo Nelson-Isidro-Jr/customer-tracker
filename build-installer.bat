@@ -53,6 +53,12 @@ echo  [OK] Dependencies installed
 
 echo.
 echo [3/4] Building application...
+if exist .env (
+    echo  [OK] Using report settings from .env
+) else (
+    echo  [INFO] No .env found - PDF reports use the default branding.
+    echo         Copy .env.example to .env to set your business name.
+)
 npm run build
 if %errorlevel% neq 0 (
     echo.

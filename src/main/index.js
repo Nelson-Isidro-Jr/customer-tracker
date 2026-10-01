@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import * as db from './database'
+import { REPORT_CONFIG } from './config'
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
@@ -144,7 +145,7 @@ handle('analytics:topBuyers',        (_, { year, month, limit }) => db.getTopBuy
 handle('reports:daily',   (_, date)            => db.getDailyReport(date))
 handle('reports:monthly', (_, { year, month }) => db.getMonthlyReport(year, month))
 handle('reports:years',        ()                        => db.getReportYears())
-handle('reports:yearly',       (_, year)                 => db.getYearlyReport(year))
+handle('reports:yearly',       (_, year)                 => db.getYearlyReport(year, REPORT_CONFIG.topLimit))
 handle('reports:yearlyBuyers', (_, year)                 => db.getYearlyBuyers(year))
 handle('reports:buyerYearly',  (_, { customerId, year }) => db.getBuyerYearlyStatement(customerId, year))
 
