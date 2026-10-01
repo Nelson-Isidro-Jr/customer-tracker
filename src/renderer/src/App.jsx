@@ -8,6 +8,7 @@ import CustomerDetail from './pages/CustomerDetail'
 import Transactions from './pages/Transactions'
 import History from './pages/History'
 import Reports from './pages/Reports'
+import YearlyReport from './pages/YearlyReport'
 import DataPage from './pages/DataPage'
 import Settings from './pages/Settings'
 
@@ -24,6 +25,7 @@ export default function App() {
               <Route path="/transactions"     element={<Transactions />} />
               <Route path="/history"          element={<History />} />
               <Route path="/reports"          element={<Reports />} />
+              <Route path="/yearly"           element={<YearlyReport />} />
               <Route path="/data"             element={<DataPage />} />
               <Route path="/settings"         element={<Settings />} />
             </Routes>

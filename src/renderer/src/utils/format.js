@@ -43,6 +43,22 @@ export const formatTimeOnly = (sqliteStr) => {
   return d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })
 }
 
+// Axis-friendly peso amounts: ₱950, ₱12.5k, ₱1.2M
+export const formatCompactPHP = (v) => {
+  const a = Math.abs(v || 0)
+  const sign = v < 0 ? '-' : ''
+  const r = n => Math.round(n * 10) / 10
+  if (a >= 1e6) return `${sign}₱${r(a / 1e6)}M`
+  if (a >= 1e3) return `${sign}₱${r(a / 1e3)}k`
+  return `${sign}₱${r(a)}`
+}
+
+// Signed percentage with a true minus sign: +12.4%, −3.0%
+export const formatPct = (v, digits = 1) => {
+  if (v == null) return '—'
+  return `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(digits)}%`
+}
+
 export const MONTH_NAMES = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December'
