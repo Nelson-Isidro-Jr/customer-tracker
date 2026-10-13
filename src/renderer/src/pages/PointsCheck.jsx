@@ -182,19 +182,23 @@ function HistoryRow({ row, showAmounts, index }) {
         {purchase && showAmounts && row.amount != null && (
           <div className="text-xs text-slate-500 tabular-nums">{formatPHP(row.amount)}</div>
         )}
-        {purchase && row.points === 0 ? (
-          // Points come from the running total, so most purchases add progress
-          // toward the next point rather than a whole point of their own
-          <span className="inline-flex items-center gap-1 mt-0.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-600" title="Added to your total — counts toward your next point">
-            <TrendingUp size={11} /> Toward next point
-          </span>
-        ) : (
-          <span className={`inline-flex items-center gap-1 mt-0.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums ${
-            row.points > 0 ? 'bg-emerald-50 text-emerald-700' : row.points < 0 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-400'
-          }`}>
-            <Star size={10} className="fill-current" />{row.points > 0 ? '+' : ''}{fmtInt(row.points)} {Math.abs(row.points) === 1 ? 'pt' : 'pts'}
-          </span>
-        )}
+        <div className="flex items-center justify-end gap-1.5 mt-0.5">
+          {(!purchase || row.points !== 0) && (
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums ${
+              row.points > 0 ? 'bg-emerald-50 text-emerald-700' : row.points < 0 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-400'
+            }`}>
+              <Star size={10} className="fill-current" />{row.points > 0 ? '+' : ''}{fmtInt(row.points)} {Math.abs(row.points) === 1 ? 'pt' : 'pts'}
+            </span>
+          )}
+          {/* Points come from the running total, so most purchases add progress
+              toward the next point rather than a whole point of their own */}
+          {purchase && (row.to_next != null || row.points === 0) && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-600 tabular-nums"
+              title={row.to_next != null ? `After this purchase, ${formatPHP(row.to_next)} more was needed for the next point` : 'Added to your total — counts toward your next point'}>
+              <TrendingUp size={11} /> {row.to_next != null ? `${formatPHP(row.to_next)} to go` : 'Toward next point'}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -390,7 +394,10 @@ function CustomerView({ customerId, showAmounts, selfClaim, claimNeedsPin, pinHa
           <div className="card overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100">
               <h2 className="text-base font-bold text-slate-900">Your history</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Every purchase adds up — you get a point each time your spending passes another ₱{formatNumber(card.rate)}</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Every purchase adds up — you get a point each time your spending passes another ₱{formatNumber(card.rate)}.
+                {showAmounts && ' “To go” is what was left to the next point right after that purchase.'}
+              </p>
             </div>
             <div className={`divide-y divide-slate-50 min-h-[300px] transition-opacity ${histLoading ? 'opacity-50' : ''}`}>
               {history.rows.length === 0 && !histLoading ? (

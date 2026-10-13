@@ -286,10 +286,11 @@ handle('activity:clear',   ()         => { db.clearActivityLog(); return true })
 handle('points:find', (_, query) => db.findCustomersForPoints({ query, mode: readSettings().pointsLookupMode }))
 handle('points:card', (_, id) => db.getPointsCard(id))
 // Purchase amounts are blanked here, before they leave the main process, when
-// the owner has hidden them
+// the owner has hidden them. So is what was left to the next point after each
+// purchase, since the difference between two rows would give the amount away.
 handle('points:timeline', (_, { customerId, page, pageSize } = {}) => {
   const res = db.getPointsTimeline(customerId, { page, pageSize })
-  if (readSettings().pointsShowAmounts === false) res.rows = res.rows.map(r => ({ ...r, amount: null }))
+  if (readSettings().pointsShowAmounts === false) res.rows = res.rows.map(r => ({ ...r, amount: null, to_next: null }))
   return res
 })
 

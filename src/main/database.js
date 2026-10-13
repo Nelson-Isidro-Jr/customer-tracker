@@ -1105,19 +1105,21 @@ export function getPointsTimeline(customerId, { page, pageSize } = {}) {
   const rows = d.prepare(`
     WITH purchases AS (
       SELECT id, amount, description, date, created_at,
-             SUM(amount) OVER (ORDER BY date, id ROWS UNBOUNDED PRECEDING) AS running
+             -- same order the list is shown in, so each row's figures follow the one below it
+             SUM(amount) OVER (ORDER BY date, time(created_at, 'localtime'), id ROWS UNBOUNDED PRECEDING) AS running
       FROM transactions WHERE customer_id = @id
     )
     SELECT 'purchase' AS kind, id, date || ' ' || COALESCE(time(created_at, 'localtime'), '00:00:00') AS sort_at,
            date, created_at, description AS label, amount, NULL AS quantity,
-           CAST(ROUND(running, 2) / @rate AS INTEGER) - CAST(ROUND(running - amount, 2) / @rate AS INTEGER) AS points
+           CAST(ROUND(running, 2) / @rate AS INTEGER) - CAST(ROUND(running - amount, 2) / @rate AS INTEGER) AS points,
+           ROUND(running, 2) AS running
     FROM purchases
     UNION ALL
     -- created_at is UTC; purchase dates are local, so compare in local time
-    SELECT 'claim', id, datetime(created_at, 'localtime'), date(created_at, 'localtime'), created_at, prize_name, NULL, quantity, -points_spent
+    SELECT 'claim', id, datetime(created_at, 'localtime'), date(created_at, 'localtime'), created_at, prize_name, NULL, quantity, -points_spent, NULL
     FROM redemptions WHERE customer_id = @id
     UNION ALL
-    SELECT 'adjustment', id, datetime(created_at, 'localtime'), date(created_at, 'localtime'), created_at, COALESCE(reason, ''), NULL, NULL, points
+    SELECT 'adjustment', id, datetime(created_at, 'localtime'), date(created_at, 'localtime'), created_at, COALESCE(reason, ''), NULL, NULL, points, NULL
     FROM point_adjustments WHERE customer_id = @id
     ORDER BY sort_at DESC, id DESC
     LIMIT @limit OFFSET @offset
@@ -1127,7 +1129,14 @@ export function getPointsTimeline(customerId, { page, pageSize } = {}) {
          + (SELECT COUNT(*) FROM redemptions WHERE customer_id = @id)
          + (SELECT COUNT(*) FROM point_adjustments WHERE customer_id = @id) AS n
   `).get({ id }).n
-  return { rows, total, page: p.page, pageSize: p.pageSize }
+  // The running total stays here; each purchase only carries what was left to
+  // the next point right after it (to_next), like a running balance
+  const rateCents = Math.round(pesosPerPoint * 100)
+  const out = rows.map(({ running, ...r }) => ({
+    ...r,
+    to_next: running == null || !rateCents ? null : (rateCents - (Math.round(running * 100) % rateCents)) / 100
+  }))
+  return { rows: out, total, page: p.page, pageSize: p.pageSize }
 }
 
 export function getPointsPage({ page, pageSize, search = '' } = {}) {
