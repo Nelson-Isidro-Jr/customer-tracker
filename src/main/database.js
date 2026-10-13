@@ -141,6 +141,32 @@ function pageArgs(page, pageSize, max = 200) {
 
 const likeOf = q => `%${String(q).trim()}%`
 
+const optionalText = v => String(v ?? '').trim() || null
+
+// The main process checks what it stores itself, so a bad value can never
+// reach the database whichever screen sent it
+function cleanCustomer(data = {}) {
+  const full_name = String(data.full_name ?? '').trim()
+  if (!full_name) throw new Error('Customer name is required')
+  return { full_name, email: optionalText(data.email), phone: optionalText(data.phone), notes: optionalText(data.notes) }
+}
+
+// A real calendar day in yyyy-MM-dd (no Feb 31)
+function isCalendarDate(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  if (!m) return false
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return d.getFullYear() === Number(m[1]) && d.getMonth() === Number(m[2]) - 1 && d.getDate() === Number(m[3])
+}
+
+function cleanTransaction(data = {}) {
+  const amount = Math.round(Number(data.amount) * 100) / 100
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Enter an amount greater than ₱0.00')
+  const date = String(data.date ?? '').trim().slice(0, 10)
+  if (!isCalendarDate(date)) throw new Error('Enter a valid date')
+  return { amount, date, description: optionalText(data.description) }
+}
+
 // ─── Customer aggregates ──────────────────────────────────────────────────────
 
 // Spend, visit count, last purchase, and points for every customer in one pass
@@ -279,10 +305,11 @@ const CUSTOMER_FIELDS = [
   ['notes', 'Notes']
 ]
 
-export function addCustomer(data) {
+export function addCustomer(input) {
+  const data = cleanCustomer(input)
   const result = getDB().prepare(`
     INSERT INTO customers (full_name, email, phone, notes) VALUES (?, ?, ?, ?)
-  `).run(data.full_name, data.email || null, data.phone || null, data.notes || null)
+  `).run(data.full_name, data.email, data.phone, data.notes)
   logActivity({
     action: 'customer_added',
     entity_type: 'customer',
@@ -294,11 +321,13 @@ export function addCustomer(data) {
   return getCustomerById(result.lastInsertRowid)
 }
 
-export function updateCustomer(id, data) {
-  const before = getDB().prepare('SELECT * FROM customers WHERE id = ?').get(id) || {}
+export function updateCustomer(id, input) {
+  const data = cleanCustomer(input)
+  const before = getDB().prepare('SELECT * FROM customers WHERE id = ?').get(id)
+  if (!before) throw new Error('Customer not found')
   getDB().prepare(`
     UPDATE customers SET full_name = ?, email = ?, phone = ?, notes = ? WHERE id = ?
-  `).run(data.full_name, data.email || null, data.phone || null, data.notes || null, id)
+  `).run(data.full_name, data.email, data.phone, data.notes, id)
   const changes = changesBetween(before, data, CUSTOMER_FIELDS)
   if (changes.length) {
     logActivity({
@@ -414,28 +443,32 @@ const TRANSACTION_FIELDS = [
   ['description', 'Description']
 ]
 
-export function addTransaction(data) {
+export function addTransaction(input) {
+  const data = { customer_id: Number(input?.customer_id), ...cleanTransaction(input) }
+  const cust = getDB().prepare('SELECT full_name FROM customers WHERE id = ?').get(data.customer_id)
+  if (!cust) throw new Error('Customer not found — it may have been deleted')
   const result = getDB().prepare(`
     INSERT INTO transactions (customer_id, amount, description, date) VALUES (?, ?, ?, ?)
-  `).run(data.customer_id, data.amount, data.description || null, data.date)
-  const cust = getDB().prepare('SELECT full_name FROM customers WHERE id = ?').get(data.customer_id)
+  `).run(data.customer_id, data.amount, data.description, data.date)
   logActivity({
     action: 'transaction_added',
     entity_type: 'transaction',
     entity_id: result.lastInsertRowid,
-    customer_name: cust?.full_name || null,
-    summary: data.description || null,
+    customer_name: cust.full_name,
+    summary: data.description,
     amount: data.amount,
     details: { changes: changesBetween({}, data, TRANSACTION_FIELDS) }
   })
   return { id: result.lastInsertRowid, ...data }
 }
 
-export function updateTransaction(id, data) {
-  const before = getDB().prepare('SELECT * FROM transactions WHERE id = ?').get(id) || {}
+export function updateTransaction(id, input) {
+  const data = cleanTransaction(input)
+  const before = getDB().prepare('SELECT * FROM transactions WHERE id = ?').get(id)
+  if (!before) throw new Error('Transaction not found — it may have been deleted')
   getDB().prepare(`
     UPDATE transactions SET amount = ?, description = ?, date = ? WHERE id = ?
-  `).run(data.amount, data.description || null, data.date, id)
+  `).run(data.amount, data.description, data.date, id)
   const row = getDB().prepare(`
     SELECT t.*, c.full_name AS customer_name
     FROM transactions t
@@ -449,7 +482,7 @@ export function updateTransaction(id, data) {
       entity_type: 'transaction',
       entity_id: id,
       customer_name: row.customer_name,
-      summary: data.description || null,
+      summary: data.description,
       amount: data.amount,
       details: { changes }
     })
