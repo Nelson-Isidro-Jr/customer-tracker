@@ -1095,13 +1095,20 @@ export function findCustomersForPoints({ query = '', mode = 'any' } = {}) {
       .slice(0, 8)
   } else {
     if (q.length < 2) return []
-    const digits = q.replace(/\D/g, '')
     rows = d.prepare(`
       SELECT id, full_name, phone FROM customers
-      WHERE full_name LIKE @q ${digits.length >= 4 ? 'OR phone LIKE @digits' : ''}
+      WHERE full_name LIKE @q
       ORDER BY full_name COLLATE NOCASE
       LIMIT 8
-    `).all(digits.length >= 4 ? { q: likeOf(q), digits: `%${digits}%` } : { q: likeOf(q) })
+    `).all({ q: likeOf(q) })
+    // Numbers match however they were typed or saved (0917-123…, +63 917…)
+    const digits = normalizePhone(q)
+    if (digits.length >= 4) {
+      const seen = new Set(rows.map(r => r.id))
+      const byPhone = d.prepare("SELECT id, full_name, phone FROM customers WHERE phone IS NOT NULL AND phone <> ''").all()
+        .filter(c => !seen.has(c.id) && normalizePhone(c.phone).includes(digits))
+      rows = rows.concat(byPhone).sort((a, b) => a.full_name.localeCompare(b.full_name)).slice(0, 8)
+    }
   }
   return rows.map(c => ({ id: c.id, full_name: c.full_name, phone_hint: phoneHint(c.phone) }))
 }
