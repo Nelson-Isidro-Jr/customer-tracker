@@ -1090,9 +1090,9 @@ export function getPointsCard(customerId) {
     adjusted: c.points_adjusted,
     redeemed: c.points_redeemed,
     rate: pesosPerPoint,
-    // Share of the way to the next point (0–1); a peso figure here would let
-    // anyone work out the customer's exact total from their balance
-    progress: rateCents ? (cents % rateCents) / rateCents : 0
+    // How far along the customer is toward their next point
+    progress: rateCents ? (cents % rateCents) / rateCents : 0,
+    to_next: rateCents ? (rateCents - (cents % rateCents)) / 100 : 0
   }
 }
 

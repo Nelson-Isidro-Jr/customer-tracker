@@ -319,7 +319,10 @@ function CustomerView({ customerId, showAmounts, selfClaim, claimNeedsPin, pinHa
                 <div className="h-2.5 rounded-full bg-glass/20 overflow-hidden">
                   <motion.div className="h-full rounded-full bg-gradient-to-r from-[#fcd34d] to-[#ffffff]" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 1.1, ease: EASE, delay: 0.3 }} />
                 </div>
-                <div className="mt-2 text-xs text-white/70">Earn 1 point for every ₱{formatNumber(card.rate)} you spend with us.</div>
+                <div className="mt-3 text-sm text-white">
+                  Spend <b className="tabular-nums">{formatPHP(card.to_next)}</b> more to earn your next point
+                </div>
+                <div className="mt-0.5 text-xs text-white/70">1 point for every ₱{formatNumber(card.rate)} you spend with us.</div>
               </div>
             </motion.div>
 
@@ -365,7 +368,10 @@ function CustomerView({ customerId, showAmounts, selfClaim, claimNeedsPin, pinHa
                         ) : p.canClaim ? (
                           <span className="badge bg-emerald-50 text-emerald-700 gap-1"><Check size={12} /> Ask us to claim</span>
                         ) : (
-                          <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">{fmtInt(need)} more</span>
+                          <span className="text-right whitespace-nowrap">
+                            <span className="block text-xs font-semibold text-slate-500">{fmtInt(need)} more {need === 1 ? 'point' : 'points'}</span>
+                            <span className="block text-[11px] text-slate-400">Spend {formatPHP(card.to_next + (need - 1) * card.rate)} more</span>
+                          </span>
                         )}
                       </div>
                       {!out && !p.canClaim && (
