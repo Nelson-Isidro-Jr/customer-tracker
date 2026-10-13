@@ -1,6 +1,6 @@
 {
   "name": "customer-tracker",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Professional Customer Transaction Tracker",
   "main": "out/main/index.js",
   "author": "Nelson Isidro",
