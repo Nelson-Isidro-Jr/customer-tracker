@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   User, Save, CheckCircle, Trash2, AlertTriangle, FolderOpen, ShieldCheck, FolderX, Camera,
-  Palette, Check, Sun, Moon, Star, Sparkles, Play, ImageOff, Info
+  Palette, Check, Sun, Moon, Star, Sparkles, Play, ImageOff, Info, MonitorSmartphone, KeyRound,
+  ExternalLink, EyeOff
 } from 'lucide-react'
 import { useSettings, useTheme } from '../context/SettingsContext'
 import { useToast } from '../context/ToastContext'
@@ -11,6 +13,7 @@ import Avatar from '../components/Avatar'
 import { PRESETS, DEFAULT_CUSTOM, previewOf, isHex } from '../theme'
 import { cropToSquare } from '../utils/photo'
 import { formatPHP, formatNumber } from '../utils/format'
+import { hashPin, isValidPin } from '../utils/pin'
 
 const EASE = [0.16, 1, 0.3, 1]
 
@@ -50,6 +53,149 @@ function Toggle({ checked, onChange, label }) {
         transition={{ type: 'spring', stiffness: 600, damping: 34 }}
       />
     </button>
+  )
+}
+
+function Segmented({ id, value, onChange, options }) {
+  return (
+    <div className="relative inline-flex bg-slate-100 rounded-xl p-1 gap-0.5 flex-wrap">
+      {options.map(o => (
+        <button key={String(o.value)} type="button" onClick={() => onChange(o.value)}
+          className={`relative px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${value === o.value ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+          {value === o.value && <motion.span layoutId={id} className="absolute inset-0 bg-white rounded-lg shadow-sm" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />}
+          <span className="relative">{o.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function SettingRow({ title, hint, children, disabled = false }) {
+  return (
+    <div className={`flex items-center justify-between gap-6 py-4 ${disabled ? 'opacity-50' : ''}`}>
+      <div className="min-w-0">
+        <div className="text-sm font-semibold text-slate-900">{title}</div>
+        {hint && <div className="text-xs text-slate-500 mt-0.5">{hint}</div>}
+      </div>
+      <div className="flex-shrink-0">{children}</div>
+    </div>
+  )
+}
+
+const RESET_OPTIONS = [
+  { value: 0, label: 'Off' },
+  { value: 30, label: '30s' },
+  { value: 60, label: '1 min' },
+  { value: 120, label: '2 min' },
+  { value: 300, label: '5 min' }
+]
+
+// Settings for the customer-facing Points Check screen
+function PointsCheckSettings({ delay }) {
+  const navigate = useNavigate()
+  const { settings, updateSettings } = useSettings()
+  const { showToast } = useToast()
+  const [editingPin, setEditingPin] = useState(false)
+  const [pin, setPin] = useState('')
+  const [pin2, setPin2] = useState('')
+  const hasPin = !!settings.customerViewPinHash
+  const selfClaim = settings.pointsSelfClaim !== false
+
+  async function savePin(e) {
+    e.preventDefault()
+    if (!isValidPin(pin)) { showToast('Use 4 to 8 digits for the PIN', 'error'); return }
+    if (pin !== pin2) { showToast('The two PINs don’t match', 'error'); return }
+    await updateSettings({ customerViewPinHash: await hashPin(pin) })
+    setPin(''); setPin2(''); setEditingPin(false)
+    showToast(hasPin ? 'Staff PIN changed' : 'Staff PIN set', 'success')
+  }
+
+  async function removePin() {
+    await updateSettings({ customerViewPinHash: null, pointsClaimNeedsPin: false })
+    setEditingPin(false)
+    showToast('Staff PIN removed', 'info')
+  }
+
+  const pinOnly = e => e.target.value.replace(/\D/g, '').slice(0, 8)
+
+  return (
+    <Section icon={MonitorSmartphone} tone="bg-sky-50 text-sky-600" title="Points Check" subtitle="A customer screen for checking points, history, and claiming prizes — it never shows their total spending" delay={delay}>
+      <div className="px-6 py-2 divide-y divide-slate-100">
+        <div className="py-4 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-start gap-3 text-xs text-slate-500 max-w-xl">
+            <EyeOff size={16} className="text-sky-500 flex-shrink-0 mt-0.5" />
+            <span>Customers see their points balance, rewards, and history only. Yearly and lifetime purchase totals are never sent to this screen. Open it on a counter PC or tablet and turn the screen toward the customer.</span>
+          </div>
+          <button onClick={() => navigate('/points-check')} className="btn-primary"><ExternalLink size={15} /> Open Points Check</button>
+        </div>
+
+        <SettingRow title="How customers find their account" hint={settings.pointsLookupMode === 'phone' ? 'Most private: the customer types their full mobile number' : 'Type at least 2 letters of a name or 4 digits of a phone number'}>
+          <Segmented id="pc-lookup" value={settings.pointsLookupMode === 'phone' ? 'phone' : 'any'} onChange={v => updateSettings({ pointsLookupMode: v })}
+            options={[{ value: 'any', label: 'Name or phone' }, { value: 'phone', label: 'Exact phone only' }]} />
+        </SettingRow>
+
+        <SettingRow title="Show each purchase’s amount" hint="When off, history lists only the date and the points earned">
+          <Toggle checked={settings.pointsShowAmounts !== false} onChange={v => updateSettings({ pointsShowAmounts: v })} label="Show purchase amounts" />
+        </SettingRow>
+
+        <SettingRow title="Return to the start when idle" hint="Clears the screen so the next person never sees someone else’s points">
+          <Segmented id="pc-reset" value={Number(settings.pointsResetSeconds ?? 60)} onChange={v => updateSettings({ pointsResetSeconds: v })} options={RESET_OPTIONS} />
+        </SettingRow>
+
+        <SettingRow title="Let customers claim prizes" hint="Customers pick a reward and claim it with their points. Stock and points update right away and it’s recorded in the Activity Log.">
+          <Toggle checked={selfClaim} onChange={v => updateSettings({ pointsSelfClaim: v })} label="Let customers claim prizes" />
+        </SettingRow>
+
+        <SettingRow disabled={!selfClaim || !hasPin} title="Staff approves each claim with the PIN" hint={hasPin ? 'A staff member enters the PIN before a claim goes through' : 'Set a staff PIN below to use this'}>
+          <Toggle checked={!!settings.pointsClaimNeedsPin && hasPin} onChange={v => (selfClaim && hasPin) && updateSettings({ pointsClaimNeedsPin: v })} label="Require staff PIN for claims" />
+        </SettingRow>
+
+        <div className="py-4 space-y-3">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${hasPin ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}><KeyRound size={16} /></div>
+              <div>
+                <div className="text-sm font-semibold text-slate-900">Staff PIN</div>
+                <div className="text-xs text-slate-500">{hasPin ? 'Set — needed to leave the customer screen' : 'Not set — anyone can leave the customer screen'}</div>
+              </div>
+            </div>
+            {!editingPin && (
+              <div className="flex items-center gap-2">
+                <button onClick={() => setEditingPin(true)} className="btn-secondary"><KeyRound size={14} /> {hasPin ? 'Change PIN' : 'Set PIN'}</button>
+                {hasPin && <button onClick={removePin} className="btn-ghost hover:!text-red-500">Remove</button>}
+              </div>
+            )}
+          </div>
+          <AnimatePresence initial={false}>
+            {editingPin && (
+              <motion.form
+                onSubmit={savePin}
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.25, ease: EASE }}
+                className="overflow-hidden"
+              >
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+                  <div>
+                    <label className="field-label">New PIN (4–8 digits)</label>
+                    <input type="password" inputMode="numeric" autoFocus className="input-field tracking-[0.4em]" value={pin} onChange={e => setPin(pinOnly(e))} placeholder="••••" />
+                  </div>
+                  <div>
+                    <label className="field-label">Type it again</label>
+                    <input type="password" inputMode="numeric" className="input-field tracking-[0.4em]" value={pin2} onChange={e => setPin2(pinOnly(e))} placeholder="••••" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="submit" disabled={!pin || !pin2} className="btn-primary"><Save size={15} /> Save PIN</button>
+                    <button type="button" onClick={() => { setEditingPin(false); setPin(''); setPin2('') }} className="btn-ghost">Cancel</button>
+                  </div>
+                </div>
+              </motion.form>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </Section>
   )
 }
 
@@ -373,6 +519,9 @@ export default function Settings() {
             </div>
           </div>
         </Section>
+
+        {/* Points Check */}
+        <PointsCheckSettings delay={0.09} />
 
         {/* Greeting */}
         <Section icon={Sparkles} tone="bg-orange-50 text-orange-600" title="Startup Greeting" subtitle="A friendly hello with your photo and a motivating message each time the app opens" delay={0.1}>
