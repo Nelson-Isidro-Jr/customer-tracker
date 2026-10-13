@@ -113,12 +113,12 @@ function initSchema(db) {
   if (!cols.includes('actor'))   db.exec('ALTER TABLE activity_log ADD COLUMN actor TEXT')
 }
 
-export function logActivity({ action, entity_type, entity_id = null, customer_name = null, summary = null, amount = null, details = null }) {
+export function logActivity({ action, entity_type, entity_id = null, customer_name = null, summary = null, amount = null, details = null, by = null }) {
   try {
     getDB().prepare(`
       INSERT INTO activity_log (action, entity_type, entity_id, customer_name, summary, amount, details, actor)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(action, entity_type, entity_id, customer_name, summary, amount, details ? JSON.stringify(details) : null, actor)
+    `).run(action, entity_type, entity_id, customer_name, summary, amount, details ? JSON.stringify(details) : null, by || actor)
   } catch (err) {
     console.error('[activity_log] insert failed:', err)
   }
@@ -937,7 +937,8 @@ export function getCustomerPoints(customerId) {
 
 // Claims a prize: re-checks stock and the live balance inside one SQLite
 // transaction, then records the redemption and takes the item out of stock.
-export function redeemPrize({ customerId, prizeId, quantity = 1 }) {
+// source 'customer' marks claims the customer made on the Points Check screen.
+export function redeemPrize({ customerId, prizeId, quantity = 1, source = 'staff' }) {
   const d = getDB()
   const qty = Math.max(1, Math.round(Number(quantity) || 1))
   const run = d.transaction(() => {
@@ -951,12 +952,14 @@ export function redeemPrize({ customerId, prizeId, quantity = 1 }) {
       INSERT INTO redemptions (customer_id, prize_id, prize_name, quantity, points_spent) VALUES (?, ?, ?, ?, ?)
     `).run(customerId, prize.id, prize.name, qty, cost)
     d.prepare('UPDATE prizes SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(qty, prize.id)
+    const selfService = source === 'customer'
     logActivity({
       action: 'reward_redeemed',
       entity_type: 'redemption',
       entity_id: result.lastInsertRowid,
       customer_name: points.full_name,
-      summary: `Claimed ${qty > 1 ? `${qty} × ` : ''}${prize.name} for ${cost} points`,
+      by: selfService ? `${points.full_name} (Points Check)` : null,
+      summary: `Claimed ${qty > 1 ? `${qty} × ` : ''}${prize.name} for ${cost} points${selfService ? ' — chosen by the customer on Points Check' : ''}`,
       details: {
         changes: [
           { field: 'Points balance', type: 'number', from: points.balance, to: points.balance - cost },
@@ -966,8 +969,8 @@ export function redeemPrize({ customerId, prizeId, quantity = 1 }) {
     })
     return result.lastInsertRowid
   })
-  run()
-  return { points: getCustomerPoints(customerId), prize: d.prepare('SELECT * FROM prizes WHERE id = ?').get(prizeId) }
+  const redemptionId = run()
+  return { redemptionId, points: getCustomerPoints(customerId), prize: d.prepare('SELECT * FROM prizes WHERE id = ?').get(prizeId) }
 }
 
 // Undoes a claim: points come back to the customer and, if the prize still
@@ -1024,6 +1027,107 @@ export function getPointsHistory(customerId, limit = 50) {
     ORDER BY created_at DESC, id DESC
     LIMIT @limit
   `).all({ id: Number(customerId), limit: Math.min(200, Math.max(1, limit)) })
+}
+
+// ─── Customer-facing points view ──────────────────────────────────────────────
+// These feed the Points Check screen that customers look at themselves, so
+// none of them returns a spending total: only points, dates, and each
+// purchase's own amount (which the main process can blank out too).
+
+// Philippine mobile numbers in one shape: +63 917… / 63917… / 917… → 0917…
+function normalizePhone(value) {
+  let d = String(value || '').replace(/\D/g, '')
+  if (d.startsWith('63') && d.length === 12) d = `0${d.slice(2)}`
+  else if (d.startsWith('9') && d.length === 10) d = `0${d}`
+  return d
+}
+
+function phoneHint(phone) {
+  const d = normalizePhone(phone)
+  return d.length >= 7 ? `${d.slice(0, 2)}•• ••• ${d.slice(-3)}` : null
+}
+
+// mode 'any': name or phone, up to 8 matches. mode 'phone': the full number
+// must match exactly, so nobody can browse other customers by name.
+export function findCustomersForPoints({ query = '', mode = 'any' } = {}) {
+  const d = getDB()
+  const q = String(query || '').trim()
+  let rows = []
+  if (mode === 'phone') {
+    const digits = normalizePhone(q)
+    if (digits.length < 7) return []
+    rows = d.prepare("SELECT id, full_name, phone FROM customers WHERE phone IS NOT NULL AND phone <> ''").all()
+      .filter(c => normalizePhone(c.phone) === digits)
+      .slice(0, 8)
+  } else {
+    if (q.length < 2) return []
+    const digits = q.replace(/\D/g, '')
+    rows = d.prepare(`
+      SELECT id, full_name, phone FROM customers
+      WHERE full_name LIKE @q ${digits.length >= 4 ? 'OR phone LIKE @digits' : ''}
+      ORDER BY full_name COLLATE NOCASE
+      LIMIT 8
+    `).all(digits.length >= 4 ? { q: likeOf(q), digits: `%${digits}%` } : { q: likeOf(q) })
+  }
+  return rows.map(c => ({ id: c.id, full_name: c.full_name, phone_hint: phoneHint(c.phone) }))
+}
+
+export function getPointsCard(customerId) {
+  const c = getCustomerById(customerId)
+  if (!c) throw new Error('Customer not found')
+  const rateCents = Math.round(pesosPerPoint * 100)
+  const cents = Math.round(c.total_purchases * 100)
+  return {
+    id: c.id,
+    full_name: c.full_name,
+    first_name: String(c.full_name).trim().split(/\s+/)[0],
+    phone_hint: phoneHint(c.phone),
+    member_since: c.created_at,
+    last_visit: c.last_purchase,
+    visits: c.transaction_count,
+    balance: c.points_balance,
+    earned: c.points_earned,
+    adjusted: c.points_adjusted,
+    redeemed: c.points_redeemed,
+    rate: pesosPerPoint,
+    // Share of the way to the next point (0–1); a peso figure here would let
+    // anyone work out the customer's exact total from their balance
+    progress: rateCents ? (cents % rateCents) / rateCents : 0
+  }
+}
+
+// One timeline of everything that moved the customer's points: purchases with
+// the points each one earned, prize claims, and manual adjustments.
+export function getPointsTimeline(customerId, { page, pageSize } = {}) {
+  const d = getDB()
+  const id = Number(customerId)
+  const p = pageArgs(page, pageSize, 100)
+  const rows = d.prepare(`
+    WITH purchases AS (
+      SELECT id, amount, description, date, created_at,
+             SUM(amount) OVER (ORDER BY date, id ROWS UNBOUNDED PRECEDING) AS running
+      FROM transactions WHERE customer_id = @id
+    )
+    SELECT 'purchase' AS kind, id, date || ' ' || COALESCE(time(created_at, 'localtime'), '00:00:00') AS sort_at,
+           date, created_at, description AS label, amount, NULL AS quantity,
+           CAST(ROUND(running, 2) / @rate AS INTEGER) - CAST(ROUND(running - amount, 2) / @rate AS INTEGER) AS points
+    FROM purchases
+    UNION ALL
+    -- created_at is UTC; purchase dates are local, so compare in local time
+    SELECT 'claim', id, datetime(created_at, 'localtime'), date(created_at, 'localtime'), created_at, prize_name, NULL, quantity, -points_spent
+    FROM redemptions WHERE customer_id = @id
+    UNION ALL
+    SELECT 'adjustment', id, datetime(created_at, 'localtime'), date(created_at, 'localtime'), created_at, COALESCE(reason, ''), NULL, NULL, points
+    FROM point_adjustments WHERE customer_id = @id
+    ORDER BY sort_at DESC, id DESC
+    LIMIT @limit OFFSET @offset
+  `).all({ id, rate: pesosPerPoint, limit: p.pageSize, offset: p.offset })
+  const total = d.prepare(`
+    SELECT (SELECT COUNT(*) FROM transactions WHERE customer_id = @id)
+         + (SELECT COUNT(*) FROM redemptions WHERE customer_id = @id)
+         + (SELECT COUNT(*) FROM point_adjustments WHERE customer_id = @id) AS n
+  `).get({ id }).n
+  return { rows, total, page: p.page, pageSize: p.pageSize }
 }
 
 export function getPointsPage({ page, pageSize, search = '' } = {}) {

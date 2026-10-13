@@ -19,7 +19,14 @@ const SETTINGS_DEFAULTS = {
   userName: 'Nelson Isidro',
   pesosPerPoint: 10000,
   showGreeting: true,
-  theme: { preset: 'light' }
+  theme: { preset: 'light' },
+  // Points Check (customer-facing screen)
+  pointsLookupMode: 'any',
+  pointsShowAmounts: true,
+  pointsResetSeconds: 60,
+  pointsSelfClaim: true,
+  pointsClaimNeedsPin: false,
+  customerViewPinHash: null
 }
 
 function readSettings() {
@@ -50,7 +57,13 @@ const SETTINGS_LOG = [
   ['theme', 'Theme', 'theme_changed', themeLabel],
   ['pesosPerPoint', 'Pesos per point', 'points_rate_changed', v => `₱${Number(v).toLocaleString('en-PH')}`],
   ['showGreeting', 'Startup greeting', 'settings_updated', v => (v === false ? 'Off' : 'On')],
-  ['autoBackupFolder', 'Auto-backup folder', 'settings_updated', v => v || 'Disabled']
+  ['autoBackupFolder', 'Auto-backup folder', 'settings_updated', v => v || 'Disabled'],
+  ['pointsLookupMode', 'Points Check lookup', 'settings_updated', v => (v === 'phone' ? 'Exact phone number only' : 'Name or phone')],
+  ['pointsShowAmounts', 'Points Check purchase amounts', 'settings_updated', v => (v === false ? 'Hidden' : 'Shown')],
+  ['pointsResetSeconds', 'Points Check auto-reset', 'settings_updated', v => (Number(v) > 0 ? `${v} seconds` : 'Off')],
+  ['customerViewPinHash', 'Points Check staff PIN', 'settings_updated', v => (v ? 'PIN set' : 'No PIN')],
+  ['pointsSelfClaim', 'Customers can claim prizes', 'settings_updated', v => (v === false ? 'Off' : 'On')],
+  ['pointsClaimNeedsPin', 'Staff PIN to approve claims', 'settings_updated', v => (v ? 'Required' : 'Not required')]
 ]
 
 function logSettingsChanges(before, after) {
@@ -266,7 +279,33 @@ handle('rewards:cancel',          (_, id)           => db.cancelRedemption(id))
 handle('rewards:adjust',          (_, opts)         => db.adjustPoints(opts))
 handle('rewards:pointsPage',      (_, opts)         => db.getPointsPage(opts || {}))
 handle('rewards:redemptionsPage', (_, opts)         => db.getRedemptionsPage(opts || {}))
+
 handle('activity:clear',   ()         => { db.clearActivityLog(); return true })
+
+// ─── IPC: Points Check (customer-facing) ──────────────────────────────────────
+handle('points:find', (_, query) => db.findCustomersForPoints({ query, mode: readSettings().pointsLookupMode }))
+handle('points:card', (_, id) => db.getPointsCard(id))
+// Purchase amounts are blanked here, before they leave the main process, when
+// the owner has hidden them
+handle('points:timeline', (_, { customerId, page, pageSize } = {}) => {
+  const res = db.getPointsTimeline(customerId, { page, pageSize })
+  if (readSettings().pointsShowAmounts === false) res.rows = res.rows.map(r => ({ ...r, amount: null }))
+  return res
+})
+
+// A claim the customer makes on the Points Check screen. Same checks as a
+// staff claim (stock and live balance inside one transaction), logged as theirs.
+handle('points:claim', (_, { customerId, prizeId, quantity } = {}) => {
+  if (readSettings().pointsSelfClaim === false) throw new Error('Claiming on this screen is turned off — please ask our staff')
+  const res = db.redeemPrize({ customerId, prizeId, quantity, source: 'customer' })
+  return { redemptionId: res.redemptionId, prize: { id: res.prize.id, name: res.prize.name, quantity: res.prize.quantity }, card: db.getPointsCard(customerId) }
+})
+
+handle('window:setFullScreen', (event, on) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win) win.setFullScreen(!!on)
+  return win ? win.isFullScreen() : false
+})
 
 // ─── IPC: Analytics ───────────────────────────────────────────────────────────
 handle('analytics:dashboard',        ()                          => db.getDashboardStats())
