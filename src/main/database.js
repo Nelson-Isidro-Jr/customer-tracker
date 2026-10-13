@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3'
 import path from 'path'
+import fs from 'fs'
 import { app } from 'electron'
 
 let db
@@ -1289,6 +1290,21 @@ export function exportAllData() {
   }
 }
 
+// Copies the whole database to backups/<label>-<time>.db before something
+// replaces or wipes the data, keeping the ten most recent copies per label.
+// Throws if the copy can't be written, so the change never runs unprotected.
+export function snapshotDatabase(label) {
+  const d = getDB()
+  const dir = path.join(app.getPath('userData'), 'backups')
+  fs.mkdirSync(dir, { recursive: true })
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const name = `${label}-${stamp}.db`
+  d.prepare('VACUUM INTO ?').run(path.join(dir, name))
+  const old = fs.readdirSync(dir).filter(n => n.startsWith(`${label}-`) && n.endsWith('.db')).sort().reverse().slice(10)
+  for (const n of old) fs.rmSync(path.join(dir, n), { force: true })
+  return name
+}
+
 function wipeData(d) {
   for (const table of ['redemptions', 'point_adjustments', 'transactions', 'customers', 'prizes']) {
     d.prepare(`DELETE FROM ${table}`).run()
@@ -1303,39 +1319,47 @@ export function importData(data) {
   const customers = Array.isArray(data?.customers) ? data.customers : null
   const transactions = Array.isArray(data?.transactions) ? data.transactions : null
   if (!customers || !transactions) throw new Error('This file is not a Customer Tracker backup')
+  const saved = snapshotDatabase('pre-import')
+  // A missing created_at falls back to now instead of breaking the import
   const run = d.transaction(() => {
     wipeData(d)
-    const ic = d.prepare('INSERT INTO customers (id,full_name,email,phone,notes,created_at) VALUES (?,?,?,?,?,?)')
+    const ic = d.prepare('INSERT INTO customers (id,full_name,email,phone,notes,created_at) VALUES (?,?,?,?,?,COALESCE(?, CURRENT_TIMESTAMP))')
     for (const c of customers) {
-      ic.run(c.id, c.full_name, c.email || null, c.phone || null, c.notes || null, c.created_at)
+      ic.run(c.id ?? null, c.full_name, c.email || null, c.phone || null, c.notes || null, c.created_at ?? null)
     }
-    const it = d.prepare('INSERT INTO transactions (id,customer_id,amount,description,date,created_at) VALUES (?,?,?,?,?,?)')
+    const it = d.prepare('INSERT INTO transactions (id,customer_id,amount,description,date,created_at) VALUES (?,?,?,?,?,COALESCE(?, CURRENT_TIMESTAMP))')
     for (const t of transactions) {
-      it.run(t.id, t.customer_id, t.amount, t.description || null, t.date, t.created_at)
+      it.run(t.id ?? null, t.customer_id, t.amount, t.description || null, t.date, t.created_at ?? null)
     }
-    const ip = d.prepare('INSERT INTO prizes (id,name,description,points_cost,quantity,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
+    const ip = d.prepare('INSERT INTO prizes (id,name,description,points_cost,quantity,created_at,updated_at) VALUES (?,?,?,?,?,COALESCE(?, CURRENT_TIMESTAMP),COALESCE(?, CURRENT_TIMESTAMP))')
     for (const p of data.prizes || []) {
-      ip.run(p.id, p.name, p.description || null, p.points_cost, p.quantity, p.created_at, p.updated_at || p.created_at)
+      ip.run(p.id ?? null, p.name, p.description || null, p.points_cost, p.quantity, p.created_at ?? null, p.updated_at ?? p.created_at ?? null)
     }
-    const ir = d.prepare('INSERT INTO redemptions (id,customer_id,prize_id,prize_name,quantity,points_spent,created_at) VALUES (?,?,?,?,?,?,?)')
+    const ir = d.prepare('INSERT INTO redemptions (id,customer_id,prize_id,prize_name,quantity,points_spent,created_at) VALUES (?,?,?,?,?,?,COALESCE(?, CURRENT_TIMESTAMP))')
     for (const r of data.redemptions || []) {
-      ir.run(r.id, r.customer_id, r.prize_id ?? null, r.prize_name, r.quantity || 1, r.points_spent, r.created_at)
+      ir.run(r.id ?? null, r.customer_id, r.prize_id ?? null, r.prize_name, r.quantity || 1, r.points_spent, r.created_at ?? null)
     }
-    const ia = d.prepare('INSERT INTO point_adjustments (id,customer_id,points,reason,created_at) VALUES (?,?,?,?,?)')
+    const ia = d.prepare('INSERT INTO point_adjustments (id,customer_id,points,reason,created_at) VALUES (?,?,?,?,COALESCE(?, CURRENT_TIMESTAMP))')
     for (const a of data.point_adjustments || []) {
-      ia.run(a.id, a.customer_id, a.points, a.reason || null, a.created_at)
+      ia.run(a.id ?? null, a.customer_id, a.points, a.reason || null, a.created_at ?? null)
     }
     logActivity({
       action: 'data_imported',
       entity_type: 'data',
-      summary: `Imported backup: ${customers.length} customers, ${transactions.length} transactions, ${(data.prizes || []).length} prizes`
+      summary: `Imported backup: ${customers.length} customers, ${transactions.length} transactions, ${(data.prizes || []).length} prizes. Previous data saved to backups/${saved}`
     })
   })
-  run()
+  try {
+    run()
+  } catch (err) {
+    // The transaction rolled back, so nothing changed
+    throw new Error(`This backup could not be imported (${err.message}). Your current data was not changed.`)
+  }
 }
 
 export function clearAllData() {
   const d = getDB()
+  const saved = snapshotDatabase('pre-clear')
   const run = d.transaction(() => {
     const counts = {
       customers: d.prepare('SELECT COUNT(*) AS n FROM customers').get().n,
@@ -1346,7 +1370,7 @@ export function clearAllData() {
     logActivity({
       action: 'data_cleared',
       entity_type: 'data',
-      summary: `Cleared all data: ${counts.customers} customers, ${counts.transactions} transactions, ${counts.prizes} prizes`
+      summary: `Cleared all data: ${counts.customers} customers, ${counts.transactions} transactions, ${counts.prizes} prizes. A copy was saved to backups/${saved}`
     })
   })
   run()

@@ -380,8 +380,13 @@ handle('data:import', async () => {
     properties: ['openFile']
   })
   if (!filePaths || !filePaths[0]) return { success: false }
-  const raw = fs.readFileSync(filePaths[0], 'utf8')
-  db.importData(JSON.parse(raw))
+  let data
+  try {
+    data = JSON.parse(fs.readFileSync(filePaths[0], 'utf8').replace(/^\uFEFF/, ''))
+  } catch (_) {
+    throw new Error('That file is not a valid JSON backup. Your current data was not changed.')
+  }
+  db.importData(data)
   return { success: true }
 })
 

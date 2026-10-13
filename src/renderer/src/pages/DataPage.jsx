@@ -37,7 +37,7 @@ export default function DataPage() {
       const res = await window.electron.invoke('data:export')
       if (res.success) showToast('Backup exported successfully!', 'success')
       else showToast('Export cancelled', 'info')
-    } catch { showToast('Export failed', 'error') }
+    } catch (err) { showToast(err?.message || 'Export failed', 'error') }
     finally { setLoading('') }
   }
 
@@ -45,9 +45,9 @@ export default function DataPage() {
     setLoading('backup-import')
     try {
       const res = await window.electron.invoke('data:import')
-      if (res.success) showToast('Data imported! Refresh pages to see changes.', 'success')
+      if (res.success) showToast('Backup imported! Your previous data was saved in the backups folder first.', 'success', 6000)
       else showToast('Import cancelled', 'info')
-    } catch { showToast('Import failed — invalid file?', 'error') }
+    } catch (err) { showToast(err?.message || 'Import failed — invalid file?', 'error', 8000) }
     finally { setLoading(''); setConfirmImport(false) }
   }
 
@@ -57,7 +57,7 @@ export default function DataPage() {
       const res = await window.electron.invoke('data:exportExcel', { type: 'all', filters: {} })
       if (res.success) showToast('Excel file exported!', 'success')
       else showToast('Export cancelled', 'info')
-    } catch { showToast('Export failed', 'error') }
+    } catch (err) { showToast(err?.message || 'Export failed — is the file open in Excel?', 'error') }
     finally { setLoading('') }
   }
 
@@ -127,7 +127,7 @@ export default function DataPage() {
       {confirmImport && (
         <ConfirmDialog
           title="Import Backup"
-          message="Importing will permanently replace ALL your current customers, transactions, prizes, and claims with the data from the backup file. Are you sure you want to continue?"
+          message="Importing replaces ALL your current customers, transactions, prizes, and claims with the data from the backup file. A copy of your current data is saved in the backups folder first. Continue?"
           onConfirm={handleImportBackup}
           onCancel={() => setConfirmImport(false)}
         />

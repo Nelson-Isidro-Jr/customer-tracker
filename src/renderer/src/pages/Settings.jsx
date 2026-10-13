@@ -364,7 +364,7 @@ export default function Settings() {
     setClearing(true)
     try {
       await window.electron.invoke('data:clearAll')
-      showToast('All data cleared successfully.', 'success')
+      showToast('All data cleared. A safety copy was saved in the backups folder.', 'success', 6000)
     } catch (err) {
       showToast(err?.message || 'Failed to clear data', 'error')
     } finally {
@@ -586,7 +586,7 @@ export default function Settings() {
       {confirmClear && (
         <ConfirmDialog
           title="Clear All Data"
-          message="This will permanently delete ALL customers, transactions, prizes, and claims. This action cannot be undone."
+          message="This will delete ALL customers, transactions, prizes, and claims. A safety copy is saved in the backups folder first, but the app itself cannot undo this."
           requireType="DELETE"
           onConfirm={handleClearAll}
           onCancel={() => setConfirmClear(false)}
