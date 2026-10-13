@@ -52,25 +52,26 @@ export default function Reports() {
     finally { setMLoading(false) }
   }
 
-  async function exportDaily() {
-    if (!dailyReport) return
-    const res = await window.electron.invoke('data:exportExcel', {
-      type: 'daily', filters: { date: dailyDate }
-    })
-    if (res.success) showToast('Exported to Excel!', 'success')
-    else showToast('Export cancelled', 'info')
+  // Exports always match the report on screen, even if the pickers were
+  // changed afterwards without generating again
+  async function exportExcel(filters) {
+    try {
+      const res = await window.electron.invoke('data:exportExcel', filters)
+      if (res.success) showToast('Exported to Excel!', 'success')
+      else showToast('Export cancelled', 'info')
+    } catch (err) { showToast(err?.message || 'Export failed — is the file open in Excel?', 'error') }
   }
 
-  async function exportMonthly() {
-    if (!mReport) return
-    const res = await window.electron.invoke('data:exportExcel', {
-      type: 'monthly', filters: { year: mYear, month: mMonth }
-    })
-    if (res.success) showToast('Exported to Excel!', 'success')
-    else showToast('Export cancelled', 'info')
+  function exportDaily() {
+    if (dailyReport) exportExcel({ type: 'daily', filters: { date: dailyReport.date } })
+  }
+
+  function exportMonthly() {
+    if (mReport) exportExcel({ type: 'monthly', filters: { year: mReport.year, month: reportMonth } })
   }
 
   const years = Array.from({ length: 10 }, (_, i) => now.getFullYear() - i)
+  const reportMonth = mReport ? Number(String(mReport.month).slice(5, 7)) : mMonth
 
   return (
     <div className="page-container">
@@ -138,7 +139,7 @@ export default function Reports() {
                         </div>
                       </div>
                       <div className="text-xl font-bold text-slate-900">{value}</div>
-                      <div className="text-xs text-slate-400 mt-0.5">{formatDate(dailyDate)}</div>
+                      <div className="text-xs text-slate-400 mt-0.5">{formatDate(dailyReport.date)}</div>
                     </div>
                   ))}
                 </div>
@@ -147,7 +148,7 @@ export default function Reports() {
                 <div className="card overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
                     <h3 className="text-sm font-semibold text-slate-900">
-                      Sales — {formatDate(dailyDate)}
+                      Sales — {formatDate(dailyReport.date)}
                     </h3>
                     <button onClick={exportDaily} className="btn-secondary !py-2 text-xs">
                       <Download size={13} /> Export Excel
@@ -245,7 +246,7 @@ export default function Reports() {
                 {mReport.dailyBreakdown.length > 0 && (
                   <div className="card p-5">
                     <h3 className="text-sm font-semibold text-slate-900 mb-5">
-                      Daily Breakdown — {MONTH_NAMES[mMonth - 1]} {mYear}
+                      Daily Breakdown — {MONTH_NAMES[reportMonth - 1]} {mReport.year}
                     </h3>
                     <ResponsiveContainer width="100%" height={180}>
                       <BarChart data={mReport.dailyBreakdown} barSize={20} margin={{ left: -10 }}>
@@ -270,7 +271,7 @@ export default function Reports() {
                 <div className="card overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
                     <h3 className="text-sm font-semibold text-slate-900">
-                      Transactions — {MONTH_NAMES[mMonth - 1]} {mYear}
+                      Transactions — {MONTH_NAMES[reportMonth - 1]} {mReport.year}
                     </h3>
                     <button onClick={exportMonthly} className="btn-secondary !py-2 text-xs">
                       <Download size={13} /> Export Excel
