@@ -16,7 +16,13 @@ import { CustomerForm } from './Customers'
 import { SkeletonRows } from './Transactions'
 import { useToast } from '../context/ToastContext'
 import usePaged from '../hooks/usePaged'
-import { formatPHP, formatNumber, formatDate, formatDateShort, formatRecordedAt } from '../utils/format'
+import { formatPHP, formatNumber, formatDate, formatDateShort, formatRecordedAt, parseSqliteTime } from '../utils/format'
+
+// created_at is UTC; show the local calendar day it was added
+function customerSince(createdAt) {
+  const d = parseSqliteTime(createdAt)
+  return isNaN(d) ? '—' : d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
+}
 
 export default function CustomerDetail() {
   const { id } = useParams()
@@ -110,7 +116,7 @@ export default function CustomerDetail() {
                 {customer.email && <span className="flex items-center gap-1.5 text-xs text-slate-500"><Mail size={11} />{customer.email}</span>}
                 {customer.phone && <span className="flex items-center gap-1.5 text-xs text-slate-500"><Phone size={11} />{customer.phone}</span>}
                 {!customer.email && !customer.phone && <span className="text-xs text-slate-400">No contact info</span>}
-                <span className="text-xs text-slate-400">· Customer since {formatDateShort(String(customer.created_at || '').slice(0, 10))}</span>
+                <span className="text-xs text-slate-400">· Customer since {customerSince(customer.created_at)}</span>
               </div>
             </div>
           </motion.div>

@@ -83,6 +83,22 @@ function logSettingsChanges(before, after) {
   }
 }
 
+// yyyy-MM-dd in the computer's time zone; toISOString alone gives the UTC
+// date, which is still "yesterday" in the Philippines until 8 AM
+function localDate(d = new Date()) {
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+}
+
+// SQLite CURRENT_TIMESTAMP values are UTC; Excel gets them in local time
+function localStamp(sqlite) {
+  if (!sqlite) return ''
+  const s = String(sqlite).trim()
+  const iso = s.includes('T') ? s : s.replace(' ', 'T')
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`)
+  if (isNaN(d)) return s
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16).replace('T', ' ')
+}
+
 function writeSettings(data) {
   fs.writeFileSync(getSettingsPath(), JSON.stringify(data, null, 2), 'utf8')
 }
@@ -120,9 +136,7 @@ function runDailyBackup() {
     const settings = readSettings()
     if (!settings.autoBackupFolder) return
     if (!fs.existsSync(settings.autoBackupFolder)) return
-    const now = new Date()
-    const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
-    const filename = `customer-tracker-auto-${today}.json`
+    const filename = `customer-tracker-auto-${localDate()}.json`
     const fullPath = path.join(settings.autoBackupFolder, filename)
     if (fs.existsSync(fullPath)) return
     const data = db.exportAllData()
@@ -365,7 +379,7 @@ handle('data:export', async () => {
   const data = db.exportAllData()
   const { filePath } = await dialog.showSaveDialog({
     title: 'Export Database Backup',
-    defaultPath: `customer-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`,
+    defaultPath: `customer-tracker-backup-${localDate()}.json`,
     filters: [{ name: 'JSON Backup', extensions: ['json'] }]
   })
   if (!filePath) return { success: false }
@@ -404,7 +418,7 @@ handle('data:exportExcel', async (_, { type, filters }) => {
 
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(customers.map(c => ({
       'ID': c.id, 'Full Name': c.full_name, 'Email': c.email || '',
-      'Phone': c.phone || '', 'Notes': c.notes || '', 'Registered': c.created_at,
+      'Phone': c.phone || '', 'Notes': c.notes || '', 'Registered': localStamp(c.created_at),
       'Total Spent (PHP)': c.total_purchases, 'Transactions': c.transaction_count,
       'Points Balance': c.points_balance
     }))), 'Customers')
@@ -412,12 +426,12 @@ handle('data:exportExcel', async (_, { type, filters }) => {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(transactions.map(t => ({
       'ID': t.id, 'Customer': cMap[t.customer_id] || 'Unknown',
       'Amount (PHP)': t.amount, 'Description': t.description || '',
-      'Date': t.date, 'Recorded At': t.created_at
+      'Date': t.date, 'Recorded At': localStamp(t.created_at)
     }))), 'Transactions')
 
     const { filePath } = await dialog.showSaveDialog({
       title: 'Export All Data to Excel',
-      defaultPath: `customer-tracker-all-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      defaultPath: `customer-tracker-all-${localDate()}.xlsx`,
       filters: [{ name: 'Excel File', extensions: ['xlsx'] }]
     })
     if (!filePath) return { success: false }
