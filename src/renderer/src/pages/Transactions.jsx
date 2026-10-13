@@ -9,7 +9,7 @@ import AnimatedNumber from '../components/AnimatedNumber'
 import { AddTransactionModal, EditTransactionModal } from '../components/TransactionForms'
 import { useToast } from '../context/ToastContext'
 import usePaged from '../hooks/usePaged'
-import { formatPHP, formatNumber, formatDate, formatDateShort, formatRecordedAt, toDateInput } from '../utils/format'
+import { formatPHP, formatNumber, formatDate, formatDateShort, formatRecordedAt, formatRecordedDay, formatTimeOnly, toDateInput } from '../utils/format'
 
 function rangeFor(key) {
   const now = new Date()
@@ -183,7 +183,8 @@ export default function Transactions() {
       {/* Table */}
       <div className="card overflow-hidden">
         <div className="overflow-auto max-h-[calc(100vh-380px)] min-h-[240px]">
-          <table className="w-full">
+          {/* Tighter cells so all seven columns, Edit and Delete included, fit the default window */}
+          <table className="w-full [&_th]:!px-4 [&_td]:!px-4">
             <thead className="sticky top-0 z-10">
               <tr>
                 <th className="table-header w-14">#</th>
@@ -218,12 +219,17 @@ export default function Transactions() {
                   <td className="table-cell">
                     <button onClick={() => navigate(`/customers/${t.customer_id}`)} className="flex items-center gap-2.5 group text-left">
                       <Avatar name={t.customer_name} size={28} />
-                      <span className="text-sm font-medium text-slate-800 group-hover:text-blue-600 transition-colors whitespace-nowrap">{t.customer_name}</span>
+                      <span className="text-sm font-medium text-slate-800 group-hover:text-blue-600 transition-colors whitespace-nowrap max-w-[180px] truncate" title={t.customer_name}>{t.customer_name}</span>
                     </button>
                   </td>
-                  <td className="table-cell text-slate-500 max-w-[260px] truncate">{t.description || <span className="text-slate-300">—</span>}</td>
+                  <td className="table-cell text-slate-500">
+                    {t.description ? <div className="max-w-[200px] truncate" title={t.description}>{t.description}</div> : <span className="text-slate-300">—</span>}
+                  </td>
                   <td className="table-cell text-right font-bold text-slate-900 whitespace-nowrap tabular-nums">{formatPHP(t.amount)}</td>
-                  <td className="table-cell text-slate-400 whitespace-nowrap text-xs">{formatRecordedAt(t.created_at)}</td>
+                  <td className="table-cell text-slate-400 whitespace-nowrap text-xs" title={formatRecordedAt(t.created_at)}>
+                    <div>{formatRecordedDay(t.created_at)}</div>
+                    <div className="text-[11px] text-slate-300">{formatTimeOnly(t.created_at)}</div>
+                  </td>
                   <td className="table-cell text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button onClick={() => setEditTarget(t)} className="btn-ghost !px-2 !py-1 hover:!text-blue-600" title="Edit"><Edit size={14} /></button>

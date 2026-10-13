@@ -43,6 +43,14 @@ export const formatRecordedAt = (sqliteStr) => {
   })
 }
 
+// Local calendar day of a SQLite UTC timestamp: "Sep 28, 2026"
+export const formatRecordedDay = (sqliteStr) => {
+  if (!sqliteStr) return '—'
+  const d = parseSqliteTime(sqliteStr)
+  if (isNaN(d)) return String(sqliteStr).slice(0, 10)
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 export const formatTimeOnly = (sqliteStr) => {
   if (!sqliteStr) return '—'
   const d = parseSqliteTime(sqliteStr)
