@@ -1,11 +1,27 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Modal from './Modal'
 import { AlertTriangle } from 'lucide-react'
 
 export default function ConfirmDialog({ title, message, onConfirm, onCancel, danger = true, requireType }) {
   const [typed, setTyped] = useState('')
+  const [busy, setBusy] = useState(false)
+  const running = useRef(false)
+  const mounted = useRef(true)
+  useEffect(() => () => { mounted.current = false }, [])
   const gated = !!requireType
-  const canConfirm = !gated || typed === requireType
+  const canConfirm = (!gated || typed === requireType) && !busy
+
+  // Runs onConfirm once, even on a double-click, so nothing is claimed,
+  // deleted, or imported twice
+  async function confirm() {
+    if (running.current || !canConfirm) return
+    running.current = true
+    setBusy(true)
+    try { await onConfirm() } finally {
+      running.current = false
+      if (mounted.current) setBusy(false)
+    }
+  }
 
   return (
     <Modal title={title} onClose={onCancel} size="sm">
@@ -31,11 +47,11 @@ export default function ConfirmDialog({ title, message, onConfirm, onCancel, dan
         <div className="flex gap-3 w-full pt-1">
           <button onClick={onCancel} className="btn-secondary flex-1 justify-center">Cancel</button>
           <button
-            onClick={onConfirm}
+            onClick={confirm}
             disabled={!canConfirm}
             className={`flex-1 justify-center ${danger ? 'btn-danger' : 'btn-primary'} ${!canConfirm ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            Confirm
+            {busy ? 'Working…' : 'Confirm'}
           </button>
         </div>
       </div>

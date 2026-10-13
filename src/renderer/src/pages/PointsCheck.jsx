@@ -216,6 +216,7 @@ function CustomerView({ customerId, showAmounts, selfClaim, claimNeedsPin, pinHa
   const [approving, setApproving] = useState(false)
   const [claiming, setClaiming] = useState(false)
   const [ticket, setTicket] = useState(null)
+  const claimingRef = useRef(false)
 
   useEffect(() => {
     Promise.all([
@@ -232,6 +233,9 @@ function CustomerView({ customerId, showAmounts, selfClaim, claimNeedsPin, pinHa
   }, [customerId, page, reloadKey])
 
   async function doClaim() {
+    // One claim per confirmation, however fast the button or Enter is pressed
+    if (claimingRef.current || !claimTarget) return
+    claimingRef.current = true
     const { prize, quantity } = claimTarget
     setApproving(false)
     setClaiming(true)
@@ -247,6 +251,7 @@ function CustomerView({ customerId, showAmounts, selfClaim, claimNeedsPin, pinHa
       showToast(err?.message || 'Could not claim the prize', 'error')
       setClaimTarget(null)
     } finally {
+      claimingRef.current = false
       setClaiming(false)
     }
   }
@@ -565,10 +570,14 @@ function StaffPinDialog({ pinHash, title = 'Staff only', message, confirmLabel, 
   // Keep typed digits out of whatever field had focus behind the dialog
   useEffect(() => { document.activeElement?.blur?.() }, [])
 
+  const succeeded = useRef(false)
   const check = useCallback(async value => {
-    if (!needsPin) { onSuccess(); return }
-    if ((await hashPin(value)) === pinHash) onSuccess()
-    else { setWrong(w => w + 1); setPin('') }
+    if (succeeded.current) return
+    const ok = !needsPin || (await hashPin(value)) === pinHash
+    if (!ok) { setWrong(w => w + 1); setPin(''); return }
+    if (succeeded.current) return
+    succeeded.current = true
+    onSuccess()
   }, [needsPin, pinHash, onSuccess])
 
   useEffect(() => {
