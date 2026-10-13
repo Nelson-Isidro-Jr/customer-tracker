@@ -1,7 +1,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  LayoutDashboard, Users, Receipt, BarChart2, Gift, ScrollText,
+  LayoutDashboard, Users, Receipt, BarChart2, Gift, ScrollText, MonitorSmartphone,
   Database, ChevronRight, TrendingUp, Settings, CalendarRange, Sun, Sunset, Moon
 } from 'lucide-react'
 import { useSettings } from '../context/SettingsContext'
@@ -15,7 +15,8 @@ const NAV = [
       { to: '/',             label: 'Dashboard',    icon: LayoutDashboard, end: true },
       { to: '/customers',    label: 'Customers',    icon: Users },
       { to: '/transactions', label: 'Transactions', icon: Receipt },
-      { to: '/rewards',      label: 'Rewards',      icon: Gift }
+      { to: '/rewards',      label: 'Rewards',      icon: Gift },
+      { to: '/points-check', label: 'Points Check', icon: MonitorSmartphone }
     ]
   },
   {
@@ -127,6 +128,11 @@ const PERIOD_ICON = { morning: Sun, afternoon: Sunset, evening: Moon }
 export default function Layout({ children }) {
   const location = useLocation()
   const { settings } = useSettings()
+
+  // The customer-facing Points Check screen has no sidebar or header, so a
+  // customer can't wander into the rest of the app
+  if (location.pathname.startsWith('/points-check')) return <div className="h-screen bg-page">{children}</div>
+
   const base = '/' + location.pathname.split('/')[1]
   const title = location.pathname.startsWith('/customers/') ? 'Customer Profile' : (PAGE_TITLES[base] || 'Customer Tracker')
   const greet = greetingFor()

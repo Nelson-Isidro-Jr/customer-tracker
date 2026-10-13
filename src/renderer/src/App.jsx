@@ -10,6 +10,7 @@ import Customers from './pages/Customers'
 import CustomerDetail from './pages/CustomerDetail'
 import Transactions from './pages/Transactions'
 import Rewards from './pages/Rewards'
+import PointsCheck from './pages/PointsCheck'
 import ActivityLog from './pages/ActivityLog'
 import Reports from './pages/Reports'
 import YearlyReport from './pages/YearlyReport'
@@ -45,6 +46,7 @@ function AppShell() {
             <Route path="/customers/:id"    element={<CustomerDetail />} />
             <Route path="/transactions"     element={<Transactions />} />
             <Route path="/rewards"          element={<Rewards />} />
+            <Route path="/points-check"     element={<PointsCheck />} />
             <Route path="/activity"         element={<ActivityLog />} />
             <Route path="/history"          element={<Navigate to="/activity" replace />} />
             <Route path="/reports"          element={<Reports />} />

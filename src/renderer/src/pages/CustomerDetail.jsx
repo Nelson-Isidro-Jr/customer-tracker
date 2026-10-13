@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Mail, Phone, Plus, Trash2, Edit, ShoppingBag, DollarSign, Calendar,
-  TrendingUp, FileText, Star, Gift, SlidersHorizontal, Receipt, MinusCircle, PlusCircle
+  TrendingUp, FileText, Star, Gift, SlidersHorizontal, Receipt, MinusCircle, PlusCircle, MonitorSmartphone
 } from 'lucide-react'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -176,6 +176,9 @@ export default function CustomerDetail() {
               </button>
               <button onClick={() => setAdjustOpen(true)} className="flex-1 inline-flex items-center justify-center gap-1.5 bg-glass/15 text-white text-xs font-bold rounded-lg py-2 hover:bg-glass/25 transition-colors">
                 <SlidersHorizontal size={13} /> Adjust
+              </button>
+              <button onClick={() => navigate(`/points-check?customer=${customer.id}`)} className="inline-flex items-center justify-center bg-glass/15 text-white rounded-lg px-2.5 hover:bg-glass/25 transition-colors" title="Show points to the customer (hides spending totals)">
+                <MonitorSmartphone size={14} />
               </button>
             </div>
           </div>

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Gift, Star, Plus, Edit, Trash2, Package, Trophy, History, Coins, SlidersHorizontal,
-  Search, X, Undo2, Check, Sparkles, Settings2, ArrowRight, Users
+  Search, X, Undo2, Check, Sparkles, Settings2, ArrowRight, Users, MonitorSmartphone
 } from 'lucide-react'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -377,6 +377,9 @@ export default function Rewards() {
                       <div className="relative flex gap-2 mt-4">
                         <button onClick={() => setAdjustFor({ customer, balance: points.balance })} className="flex-1 inline-flex items-center justify-center gap-1.5 bg-glass/15 hover:bg-glass/25 text-white text-xs font-bold rounded-lg py-2 transition-colors">
                           <SlidersHorizontal size={13} /> Add / deduct points
+                        </button>
+                        <button onClick={() => navigate(`/points-check?customer=${customer.id}`)} className="inline-flex items-center justify-center bg-glass/15 hover:bg-glass/25 text-white rounded-lg px-3 transition-colors" title="Show points to the customer (hides spending totals)">
+                          <MonitorSmartphone size={14} />
                         </button>
                         <button onClick={() => navigate(`/customers/${customer.id}`)} className="inline-flex items-center justify-center gap-1 bg-glass/15 hover:bg-glass/25 text-white text-xs font-bold rounded-lg px-3 transition-colors" title="Open profile">
                           <ArrowRight size={13} />
